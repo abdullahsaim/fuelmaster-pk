@@ -1,20 +1,15 @@
 {
-  "name": "fuelmaster-pk-client",
+  "name": "fuelmaster-pk",
   "version": "3.0.0",
   "private": true,
-  "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "start": "cd server && node index.js",
+    "build": "cd client && npm install && npm run build && mkdir -p ../server/public && cp -r dist/* ../server/public/ && cd ../server && npm install",
+    "postinstall": "cd client && npm install && npm run build && mkdir -p ../server/public && cp -r dist/* ../server/public/ && cd ../server && npm install",
+    "dev": "concurrently \"cd server && npx nodemon index.js\" \"cd client && npm run dev\"",
+    "seed": "cd server && node seeders/seed.js"
   },
-  "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "axios": "^1.7.7",
-    "lucide-react": "^0.441.0",
-    "react-hot-toast": "^2.4.1",
-    "vite": "^6.0.0",
-    "@vitejs/plugin-react": "^4.3.4"
+  "devDependencies": {
+    "concurrently": "^8.2.2"
   }
 }
