@@ -1,0 +1,16 @@
+{
+  "name": "fuelmaster-pk",
+  "version": "3.0.0",
+  "private": true,
+  "description": "Filling Station Management System for Pakistan — MERN Stack",
+  "scripts": {
+    "start": "cd server && node index.js",
+    "build": "cd client && npm install && npm run build && cd ../server && npm install",
+    "postinstall": "cd client && npm install && npm run build && mkdir -p ../server/public && cp -r dist/* ../server/public/ && cd ../server && npm install",
+    "dev": "concurrently \"cd server && npx nodemon index.js\" \"cd client && npm run dev\"",
+    "seed": "cd server && node seeders/seed.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
