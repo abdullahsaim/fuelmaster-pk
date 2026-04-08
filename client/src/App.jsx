@@ -113,8 +113,219 @@ const Select = ({ label, value, onChange, options }) => (
   </div>
 );
 
+// ─── LANDING PAGE ─────────────────────────────────────────────
+const LandingPage = ({ onLogin, onDemo }) => {
+  const features = [
+    { icon: I.dollar,  title: 'Sales & Cash Management', desc: 'Cash & credit sale entry with auto-calculated rates, customer balances, and shift tracking.', color: '#10b981' },
+    { icon: I.cart,    title: 'Tanker / Purchase Receipts', desc: 'Record fuel purchases with tanker number, driver, ordered vs received, shortage tracking.', color: '#3b82f6' },
+    { icon: I.gauge,   title: 'Shift Meter Readings', desc: 'Per-nozzle opening/closing readings with automatic dispensed calculation and short/excess.', color: '#8b5cf6' },
+    { icon: I.drop,    title: 'Tank Dip & Stock Variance', desc: 'Physical-stock dipping with book comparison, gain/loss tracking, and water level monitoring.', color: '#06b6d4' },
+    { icon: I.box,     title: 'Stock Management', desc: 'Live tank gauges, valuations, low-stock alerts, and full stock movement audit trail.', color: '#f59e0b' },
+    { icon: I.pump,    title: 'Pumps, Nozzles & Tanks', desc: 'Manage your forecourt: define pumps, nozzles, and tanks with status monitoring.', color: '#ec4899' },
+    { icon: I.users,   title: 'Credit Customers', desc: 'Fleet/corporate customers with credit limits, aging buckets, and payment collection.', color: '#fb923c' },
+    { icon: I.truck,   title: 'Suppliers & Payables', desc: 'Track supplier balances, record payments, and view full supplier statements.', color: '#06b6d4' },
+    { icon: I.user,    title: 'Employees & Payroll', desc: 'Staff records by role and shift with monthly payroll generation.', color: '#8b5cf6' },
+    { icon: I.receipt, title: 'Expense Tracking', desc: 'Daily operating expenses by category with payment-method breakdown.', color: '#ef4444' },
+    { icon: I.chart,   title: '13+ Built-in Reports', desc: 'P&L, day summary, sales, purchases, stock, fuel profitability, credit aging & more.', color: '#10b981' },
+    { icon: I.history, title: 'Activity History', desc: 'Unified audit trail of every sale, purchase, reading, dip, and payment.', color: '#3b82f6' },
+  ];
+
+  const stats = [
+    { value: '13+', label: 'Report Types' },
+    { value: '15',  label: 'Modules' },
+    { value: '100%',label: 'Pakistan-Ready' },
+    { value: 'PKR', label: 'OGRA Rates' },
+  ];
+
+  const card = (bg='#141820', border='#1e2533') => ({
+    background: bg, borderRadius: 16, border: `1px solid ${border}`,
+  });
+
+  return (
+    <div style={{ minHeight:'100vh', background:'#0c0f14', fontFamily:"'Outfit',-apple-system,sans-serif", color:'#e2e8f0' }}>
+      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
+
+      {/* ── NAVBAR ── */}
+      <nav style={{ position:'sticky', top:0, zIndex:100, padding:'18px 6vw', background:'rgba(10,13,18,0.85)', backdropFilter:'blur(12px)', borderBottom:'1px solid #1e2533', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ width:42, height:42, borderRadius:11, background:'linear-gradient(135deg,#10b981,#059669)', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 8px 24px rgba(16,185,129,0.3)' }}>
+            <div style={{ width:24, height:24, color:'#fff' }}>{I.fuel}</div>
+          </div>
+          <div>
+            <div style={{ fontSize:18, fontWeight:800, letterSpacing:-0.3 }}>FuelMaster</div>
+            <div style={{ fontSize:9, color:'#10b981', fontWeight:700, textTransform:'uppercase', letterSpacing:2 }}>PK Edition</div>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:10 }}>
+          <button onClick={onDemo} style={{ padding:'10px 20px', background:'transparent', color:'#e2e8f0', border:'1px solid #1e2533', borderRadius:10, fontWeight:600, fontSize:13, cursor:'pointer' }}>Try Demo</button>
+          <button onClick={onLogin} style={{ padding:'10px 22px', background:'linear-gradient(135deg,#10b981,#059669)', color:'#fff', border:'none', borderRadius:10, fontWeight:700, fontSize:13, cursor:'pointer', boxShadow:'0 6px 16px rgba(16,185,129,0.3)' }}>Sign In</button>
+        </div>
+      </nav>
+
+      {/* ── HERO ── */}
+      <section style={{ padding:'80px 6vw 60px', position:'relative', overflow:'hidden' }}>
+        <div style={{ position:'absolute', top:-200, right:-200, width:600, height:600, borderRadius:'50%', background:'radial-gradient(circle, rgba(16,185,129,0.15), transparent 60%)', pointerEvents:'none' }}/>
+        <div style={{ position:'absolute', bottom:-150, left:-150, width:500, height:500, borderRadius:'50%', background:'radial-gradient(circle, rgba(59,130,246,0.1), transparent 60%)', pointerEvents:'none' }}/>
+
+        <div style={{ maxWidth:1200, margin:'0 auto', display:'grid', gridTemplateColumns:'1.2fr 1fr', gap:48, alignItems:'center', position:'relative' }}>
+          <div>
+            <div style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'7px 14px', background:'rgba(16,185,129,0.12)', border:'1px solid rgba(16,185,129,0.3)', borderRadius:30, marginBottom:24 }}>
+              <span style={{ width:6, height:6, borderRadius:'50%', background:'#10b981', boxShadow:'0 0 12px #10b981', animation:'pulse 2s infinite' }}/>
+              <span style={{ fontSize:12, color:'#10b981', fontWeight:600 }}>v3.0 — Now with 13+ Reports</span>
+            </div>
+
+            <h1 style={{ fontSize:'clamp(36px, 5vw, 60px)', fontWeight:900, lineHeight:1.05, margin:'0 0 22px', letterSpacing:-1.5 }}>
+              Run your <span style={{ background:'linear-gradient(135deg,#10b981,#3b82f6)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' }}>petrol pump</span><br/>
+              like a Fortune 500.
+            </h1>
+
+            <p style={{ fontSize:17, color:'#8892a4', lineHeight:1.6, margin:'0 0 32px', maxWidth:540 }}>
+              Complete filling station management software built for Pakistani fuel dealers. Track sales, purchases, shift readings, stock, credit customers, and generate 13+ reports — all in one place.
+            </p>
+
+            <div style={{ display:'flex', gap:14, flexWrap:'wrap', marginBottom:36 }}>
+              <button onClick={onDemo} style={{ padding:'15px 32px', background:'linear-gradient(135deg,#10b981,#059669)', color:'#fff', border:'none', borderRadius:12, fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:'0 12px 30px rgba(16,185,129,0.35)', display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ width:18, height:18 }}>{I.fuel}</div>
+                Try Live Demo
+              </button>
+              <button onClick={onLogin} style={{ padding:'15px 32px', background:'transparent', color:'#e2e8f0', border:'1px solid #1e2533', borderRadius:12, fontWeight:700, fontSize:15, cursor:'pointer', display:'flex', alignItems:'center', gap:10 }}>
+                Sign In to Account
+                <span style={{ fontSize:18 }}>→</span>
+              </button>
+            </div>
+
+            <div style={{ display:'flex', gap:32, flexWrap:'wrap' }}>
+              {stats.map((s, i) => (
+                <div key={i}>
+                  <div style={{ fontSize:28, fontWeight:800, color:'#10b981', fontFamily:"'JetBrains Mono',monospace" }}>{s.value}</div>
+                  <div style={{ fontSize:11, color:'#8892a4', textTransform:'uppercase', letterSpacing:1, fontWeight:600 }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Hero visual — mock dashboard preview */}
+          <div style={{ ...card(), padding:24, position:'relative', boxShadow:'0 30px 60px rgba(0,0,0,0.4)' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:18 }}>
+              <div style={{ width:10, height:10, borderRadius:'50%', background:'#ef4444' }}/>
+              <div style={{ width:10, height:10, borderRadius:'50%', background:'#f59e0b' }}/>
+              <div style={{ width:10, height:10, borderRadius:'50%', background:'#10b981' }}/>
+              <div style={{ marginLeft:10, fontSize:11, color:'#8892a4' }}>fuelmaster.pk / dashboard</div>
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
+              {[
+                { l:'Today Revenue', v:'Rs. 1,84,500', c:'#10b981' },
+                { l:'Volume',        v:'2,340 L',     c:'#3b82f6' },
+                { l:'Credit',        v:'Rs. 56,200',  c:'#f59e0b' },
+                { l:'Expenses',      v:'Rs. 12,800',  c:'#ef4444' },
+              ].map((s, i) => (
+                <div key={i} style={{ background:'#0c0f14', borderRadius:10, padding:12, border:'1px solid #1e2533' }}>
+                  <div style={{ fontSize:9, color:'#8892a4', textTransform:'uppercase', letterSpacing:0.5, fontWeight:600 }}>{s.l}</div>
+                  <div style={{ fontSize:14, fontWeight:700, color:s.c, marginTop:4, fontFamily:"'JetBrains Mono',monospace" }}>{s.v}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background:'#0c0f14', borderRadius:10, padding:14, border:'1px solid #1e2533', marginBottom:10 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                <span style={{ fontSize:11, color:'#e2e8f0', fontWeight:600 }}>Tank A · Petrol</span>
+                <span style={{ fontSize:11, color:'#10b981', fontWeight:700 }}>78%</span>
+              </div>
+              <div style={{ height:8, background:'#1e2533', borderRadius:6 }}>
+                <div style={{ width:'78%', height:'100%', background:'linear-gradient(90deg,#10b981cc,#10b981)', borderRadius:6 }}/>
+              </div>
+            </div>
+            <div style={{ background:'#0c0f14', borderRadius:10, padding:14, border:'1px solid #1e2533' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
+                <span style={{ fontSize:11, color:'#e2e8f0', fontWeight:600 }}>Tank B · Diesel</span>
+                <span style={{ fontSize:11, color:'#f59e0b', fontWeight:700 }}>42%</span>
+              </div>
+              <div style={{ height:8, background:'#1e2533', borderRadius:6 }}>
+                <div style={{ width:'42%', height:'100%', background:'linear-gradient(90deg,#f59e0bcc,#f59e0b)', borderRadius:6 }}/>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}`}</style>
+      </section>
+
+      {/* ── FEATURES ── */}
+      <section style={{ padding:'70px 6vw', borderTop:'1px solid #1e2533', background:'#0a0d12' }}>
+        <div style={{ maxWidth:1200, margin:'0 auto' }}>
+          <div style={{ textAlign:'center', marginBottom:50 }}>
+            <div style={{ fontSize:11, color:'#10b981', fontWeight:700, textTransform:'uppercase', letterSpacing:2, marginBottom:10 }}>Everything You Need</div>
+            <h2 style={{ fontSize:'clamp(28px,4vw,42px)', fontWeight:800, margin:'0 0 14px', letterSpacing:-0.8 }}>Built for the way pumps actually work</h2>
+            <p style={{ fontSize:15, color:'#8892a4', maxWidth:620, margin:'0 auto' }}>From shift readings to OGRA rate updates — every workflow a Pakistani filling station owner deals with daily.</p>
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:18 }}>
+            {features.map((f, i) => (
+              <div key={i} style={{ ...card(), padding:24, transition:'transform 0.2s, border-color 0.2s', cursor:'default' }}
+                onMouseEnter={e=>{ e.currentTarget.style.transform='translateY(-4px)'; e.currentTarget.style.borderColor=`${f.color}50`; }}
+                onMouseLeave={e=>{ e.currentTarget.style.transform='translateY(0)'; e.currentTarget.style.borderColor='#1e2533'; }}>
+                <div style={{ width:46, height:46, borderRadius:12, background:`${f.color}18`, display:'flex', alignItems:'center', justifyContent:'center', marginBottom:16 }}>
+                  <div style={{ width:24, height:24, color:f.color }}>{f.icon}</div>
+                </div>
+                <h3 style={{ fontSize:16, fontWeight:700, margin:'0 0 8px', color:'#e2e8f0' }}>{f.title}</h3>
+                <p style={{ fontSize:13, color:'#8892a4', margin:0, lineHeight:1.55 }}>{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── REPORTS BANNER ── */}
+      <section style={{ padding:'70px 6vw' }}>
+        <div style={{ maxWidth:1100, margin:'0 auto', ...card('#141820'), padding:48, position:'relative', overflow:'hidden' }}>
+          <div style={{ position:'absolute', top:-100, right:-100, width:300, height:300, borderRadius:'50%', background:'radial-gradient(circle,rgba(16,185,129,0.15),transparent 70%)' }}/>
+          <div style={{ position:'relative', display:'grid', gridTemplateColumns:'1fr 1fr', gap:40, alignItems:'center' }}>
+            <div>
+              <div style={{ fontSize:11, color:'#10b981', fontWeight:700, textTransform:'uppercase', letterSpacing:2, marginBottom:10 }}>Powerful Reporting</div>
+              <h2 style={{ fontSize:32, fontWeight:800, margin:'0 0 14px', letterSpacing:-0.5 }}>13+ reports out of the box</h2>
+              <p style={{ fontSize:14, color:'#8892a4', lineHeight:1.6, margin:'0 0 22px' }}>
+                Profit & Loss, Day Summary, Sales by Fuel, Purchase by Supplier, Stock Valuation, Fuel Profitability, Credit Aging, Customer & Supplier Statements, Tank Variance, Shift Reconciliation and more — all exportable to CSV.
+              </p>
+              <button onClick={onDemo} style={{ padding:'12px 24px', background:'linear-gradient(135deg,#10b981,#059669)', color:'#fff', border:'none', borderRadius:10, fontWeight:700, fontSize:13, cursor:'pointer' }}>See Reports in Demo →</button>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+              {['P&L','Sales','Purchases','Day Summary','Shift','Stock','Expenses','Fuel Profit','Credit Aging','Variance','Monthly','Statements'].map((r,i)=>(
+                <div key={r} style={{ padding:'10px 14px', background:'#0c0f14', border:'1px solid #1e2533', borderRadius:8, fontSize:12, fontWeight:600, color:i%3===0?'#10b981':i%3===1?'#3b82f6':'#8b5cf6' }}>{r}</div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── CTA ── */}
+      <section style={{ padding:'60px 6vw 80px' }}>
+        <div style={{ maxWidth:900, margin:'0 auto', textAlign:'center', ...card(), padding:60, background:'linear-gradient(135deg,#141820,#0c0f14)' }}>
+          <h2 style={{ fontSize:'clamp(26px,4vw,38px)', fontWeight:800, margin:'0 0 14px', letterSpacing:-0.8 }}>Ready to digitize your filling station?</h2>
+          <p style={{ fontSize:15, color:'#8892a4', margin:'0 0 28px' }}>Try the live demo with sample data — no signup required.</p>
+          <div style={{ display:'flex', gap:14, justifyContent:'center', flexWrap:'wrap' }}>
+            <button onClick={onDemo} style={{ padding:'15px 32px', background:'linear-gradient(135deg,#10b981,#059669)', color:'#fff', border:'none', borderRadius:12, fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:'0 12px 30px rgba(16,185,129,0.3)' }}>Launch Live Demo</button>
+            <button onClick={onLogin} style={{ padding:'15px 32px', background:'transparent', color:'#e2e8f0', border:'1px solid #1e2533', borderRadius:12, fontWeight:700, fontSize:15, cursor:'pointer' }}>Sign In</button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── FOOTER ── */}
+      <footer style={{ padding:'30px 6vw', borderTop:'1px solid #1e2533', background:'#0a0d12', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:14 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ width:30, height:30, borderRadius:8, background:'linear-gradient(135deg,#10b981,#059669)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+            <div style={{ width:18, height:18, color:'#fff' }}>{I.fuel}</div>
+          </div>
+          <span style={{ fontSize:13, color:'#8892a4' }}>FuelMaster PK · v3.0</span>
+        </div>
+        <div style={{ fontSize:12, color:'#4a5568' }}>© {new Date().getFullYear()} FuelMaster. Built for Pakistani filling stations.</div>
+      </footer>
+    </div>
+  );
+};
+
 // ─── LOGIN PAGE ───
-const LoginPage = () => {
+const LoginPage = ({ onBack }) => {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -134,7 +345,8 @@ const LoginPage = () => {
     setLoading(false);
   };
 
-  return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'linear-gradient(135deg,#0c0f14,#1a1f2a,#0c0f14)', fontFamily:"'Outfit',sans-serif" }}>
+  return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'linear-gradient(135deg,#0c0f14,#1a1f2a,#0c0f14)', fontFamily:"'Outfit',sans-serif", position:'relative' }}>
+    {onBack && <button onClick={onBack} style={{ position:'absolute', top:24, left:24, padding:'8px 16px', background:'transparent', color:'#8892a4', border:'1px solid #1e2533', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer' }}>← Back to Home</button>}
     <div style={{ width:420, padding:40, background:'#141820', borderRadius:20, border:'1px solid #1e2533' }}>
       <div style={{ textAlign:'center', marginBottom:32 }}>
         <div style={{ width:64, height:64, borderRadius:16, margin:'0 auto 16px', background:'linear-gradient(135deg,#10b981,#059669)', display:'flex', alignItems:'center', justifyContent:'center' }}><div style={{ width:32, height:32, color:'#fff' }}>{I.fuel}</div></div>
@@ -1440,11 +1652,21 @@ const PAGES = {
 };
 
 const AppLayout = () => {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, login } = useAuth();
   const [page, setPage] = useState('dashboard');
   const [collapsed, setCollapsed] = useState(false);
+  const [publicView, setPublicView] = useState('landing'); // 'landing' | 'login'
   if (loading) return <Loader/>;
-  if (!user) return <LoginPage/>;
+  if (!user) {
+    if (publicView === 'login') return <LoginPage onBack={()=>setPublicView('landing')}/>;
+    return <LandingPage
+      onLogin={()=>setPublicView('login')}
+      onDemo={async ()=>{
+        try { await login('owner@fuelmaster.pk','admin123'); }
+        catch(e) { setPublicView('login'); }
+      }}
+    />;
+  }
   const Page = PAGES[page] || DashboardPage;
   return <div style={{ display:'flex', minHeight:'100vh', background:'#0c0f14', fontFamily:"'Outfit',-apple-system,sans-serif", color:'#e2e8f0' }}>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
