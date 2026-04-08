@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
-import { dashboardAPI, salesAPI, purchasesAPI, suppliersAPI, customersAPI, employeesAPI, expensesAPI, payrollAPI, tanksAPI, nozzlesAPI, productsAPI, fuelTypesAPI, settingsAPI, readingsAPI, dipsAPI, creditPaymentsAPI, supplierPaymentsAPI, pumpsAPI, historyAPI } from './utils/api.js';
+import { dashboardAPI, salesAPI, purchasesAPI, suppliersAPI, customersAPI, employeesAPI, expensesAPI, payrollAPI, tanksAPI, nozzlesAPI, productsAPI, fuelTypesAPI, settingsAPI, readingsAPI, dipsAPI, creditPaymentsAPI, supplierPaymentsAPI, pumpsAPI, historyAPI, reportsAPI } from './utils/api.js';
 import { PKR, fmtDate, daysAgo, today } from './utils/helpers.js';
 
 // ─── ICONS (inline SVG) ───
@@ -876,27 +876,507 @@ const PurchasesListSimple = () => {
   </div>;
 };
 
+// ─── REPORTS PAGE — multi-report hub ─────────────────────────────
 const ReportsPage = () => {
-  const [pnl, setPnl] = useState(null); const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState('pnl');
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
+  const [range, setRange] = useState({ startDate: monthStart, endDate: today() });
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [customers, setCustomers] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [selectedCustomer, setSelectedCustomer] = useState('');
+  const [selectedSupplier, setSelectedSupplier] = useState('');
+  const [dayDate, setDayDate] = useState(today());
+
   useEffect(() => {
-    const ms = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10);
-    dashboardAPI.getPnL({ startDate:ms, endDate:today() }).then(r=>{ setPnl(r.data.data); setLoading(false); }).catch(()=>setLoading(false));
+    customersAPI.getAll().then(r => setCustomers(r.data.data));
+    suppliersAPI.getAll().then(r => setSuppliers(r.data.data));
   }, []);
-  if (loading) return <Loader/>;
-  if (!pnl) return <div style={{color:'#ef4444',padding:40}}>Failed</div>;
+
+  const load = useCallback(async () => {
+    setLoading(true); setData(null);
+    try {
+      let r;
+      if (tab === 'pnl')          r = await dashboardAPI.getPnL(range);
+      if (tab === 'sales')        r = await reportsAPI.sales(range);
+      if (tab === 'purchases')    r = await reportsAPI.purchases(range);
+      if (tab === 'day')          r = await reportsAPI.daySummary({ date: dayDate });
+      if (tab === 'shift')        r = await reportsAPI.shift(range);
+      if (tab === 'stock')        r = await reportsAPI.stock(range);
+      if (tab === 'expenses')     r = await reportsAPI.expenses(range);
+      if (tab === 'fuelProfit')   r = await reportsAPI.fuelProfit(range);
+      if (tab === 'creditAging')  r = await reportsAPI.creditAging();
+      if (tab === 'variance')     r = await reportsAPI.variance(range);
+      if (tab === 'monthly')      r = await reportsAPI.monthlyTrend({ months: 12 });
+      if (tab === 'customer' && selectedCustomer) r = await reportsAPI.customer(selectedCustomer, range);
+      if (tab === 'supplier' && selectedSupplier) r = await reportsAPI.supplier(selectedSupplier, range);
+      if (r) setData(r.data.data);
+    } catch (e) { toast.error(e.response?.data?.message || 'Failed to load report'); }
+    setLoading(false);
+  }, [tab, range, dayDate, selectedCustomer, selectedSupplier]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const TABS = [
+    ['pnl',         'Profit & Loss'],
+    ['sales',       'Sales Report'],
+    ['purchases',   'Purchase Report'],
+    ['day',         'Day Summary'],
+    ['shift',       'Shift Report'],
+    ['stock',       'Stock Report'],
+    ['expenses',    'Expense Report'],
+    ['fuelProfit',  'Fuel Profitability'],
+    ['creditAging', 'Credit Aging'],
+    ['variance',    'Tank Variance'],
+    ['monthly',     'Monthly Trend'],
+    ['customer',    'Customer Statement'],
+    ['supplier',    'Supplier Statement'],
+  ];
+
+  const exportCSV = () => {
+    if (!data) return;
+    let rows = [];
+    let filename = `${tab}-report.csv`;
+    try {
+      if (tab === 'sales' && data.byFuel) rows = [['Fuel','Qty','Amount','Count'], ...data.byFuel.map(r=>[r.name, r.qty, r.amount, r.count])];
+      else if (tab === 'purchases' && data.bySupplier) rows = [['Supplier','Qty','Received','Shortage','Amount','Count'], ...data.bySupplier.map(r=>[r.name, r.qty, r.received, r.shortage, r.amount, r.count])];
+      else if (tab === 'expenses' && data.byCategory) rows = [['Category','Amount','Count'], ...data.byCategory.map(r=>[r._id, r.amount, r.count])];
+      else if (tab === 'creditAging' && data.rows) rows = [['Customer','Type','Limit','Balance','Util%','Days'], ...data.rows.map(r=>[r.name, r.type, r.creditLimit, r.balance, r.utilization, r.oldestDays])];
+      else if (tab === 'fuelProfit' && data.rows) rows = [['Fuel','Sold','Revenue','Cost','Profit','Margin%'], ...data.rows.map(r=>[r.name, r.soldQty, r.revenue, r.cogs, r.profit, r.margin])];
+      else if (tab === 'monthly' && Array.isArray(data)) rows = [['Month','Sales','Purchases','Expenses','Profit'], ...data.map(r=>[r.label, r.sales, r.purchases, r.expenses, r.profit])];
+      else if (tab === 'stock' && data.tanks) rows = [['Tank','Capacity','Stock','Fill%','Value','In','Sold','Variance'], ...data.tanks.map(t=>[t.name, t.capacity, t.currentStock, t.fillPct, t.valuation, t.period.in, t.period.sold, t.period.variance])];
+      else if ((tab==='customer' || tab==='supplier') && data.entries) rows = [['Date','Type','Ref','Description','Debit','Credit','Balance'], ...data.entries.map(e=>[fmtDate(e.date), e.kind, e.ref, e.desc, e.debit, e.credit, e.balance])];
+      if (!rows.length) return toast.error('Nothing to export');
+      const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { toast.error('Export failed'); }
+  };
+
+  const printReport = () => window.print();
+
   return <div>
-    <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', marginBottom:20 }}>Profit & Loss — {new Date().toLocaleDateString('en-PK',{month:'long',year:'numeric'})}</h2>
-    <div style={{ background:'#141820', borderRadius:14, padding:24, border:'1px solid #1e2533' }}>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
-        <div>{[['Revenue',pnl.revenue,'#10b981']].map(([l,v,c])=><div key={l} style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid #1e2533'}}><span style={{color:'#e2e8f0'}}>{l}</span><span style={{color:c,fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{PKR(v)}</span></div>)}</div>
-        <div>{[['Purchases',pnl.purchases],['Expenses',pnl.expenses]].map(([l,v])=><div key={l} style={{display:'flex',justifyContent:'space-between',padding:'10px 0',borderBottom:'1px solid #1e2533'}}><span style={{color:'#e2e8f0'}}>{l}</span><span style={{color:'#ef4444',fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{PKR(v)}</span></div>)}</div>
-      </div>
-      <div style={{ marginTop:20, padding:16, background:pnl.netProfit>=0?'#10b98112':'#ef444412', borderRadius:10, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-        <span style={{ fontSize:16, fontWeight:700, color:'#e2e8f0' }}>Net Profit/Loss</span>
-        <span style={{ fontSize:24, fontWeight:800, color:pnl.netProfit>=0?'#10b981':'#ef4444', fontFamily:"'JetBrains Mono',monospace" }}>{pnl.netProfit>=0?'+':''}{PKR(pnl.netProfit)}</span>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18, flexWrap:'wrap', gap:10 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Reports</h2>
+      <div style={{ display:'flex', gap:8 }}>
+        <Btn variant="ghost" onClick={exportCSV}>Export CSV</Btn>
+        <Btn variant="ghost" onClick={printReport}>Print</Btn>
       </div>
     </div>
+
+    <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:14 }}>
+      {TABS.map(([id, label]) =>
+        <button key={id} onClick={()=>setTab(id)} style={{ padding:'8px 14px', background:tab===id?'#10b98118':'#141820', border:'1px solid '+(tab===id?'#10b98140':'#1e2533'), borderRadius:8, color:tab===id?'#10b981':'#8892a4', fontWeight:600, fontSize:12, cursor:'pointer' }}>{label}</button>
+      )}
+    </div>
+
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:12, marginBottom:18, padding:14, background:'#141820', borderRadius:12, border:'1px solid #1e2533' }}>
+      {tab === 'day' ? (
+        <Input label="Date" type="date" value={dayDate} onChange={setDayDate}/>
+      ) : tab === 'monthly' || tab === 'creditAging' ? (
+        <div style={{ color:'#8892a4', fontSize:12, alignSelf:'center' }}>No filters needed</div>
+      ) : (
+        <>
+          <Input label="From" type="date" value={range.startDate} onChange={v=>setRange(p=>({...p,startDate:v}))}/>
+          <Input label="To"   type="date" value={range.endDate}   onChange={v=>setRange(p=>({...p,endDate:v}))}/>
+          {tab === 'customer' && <Select label="Customer" value={selectedCustomer} onChange={setSelectedCustomer} options={[{value:'',label:'Select customer...'},...customers.map(c=>({value:c._id,label:c.name}))]}/>}
+          {tab === 'supplier' && <Select label="Supplier" value={selectedSupplier} onChange={setSelectedSupplier} options={[{value:'',label:'Select supplier...'},...suppliers.map(s=>({value:s._id,label:s.name}))]}/>}
+        </>
+      )}
+    </div>
+
+    {loading && <Loader/>}
+    {!loading && !data && <div style={{ padding:40, textAlign:'center', color:'#8892a4' }}>No data — adjust filters above</div>}
+    {!loading && data && <ReportView tab={tab} data={data}/>}
   </div>;
+};
+
+// Renders the body of the selected report
+const ReportView = ({ tab, data }) => {
+  const Card = ({ children, title }) => (
+    <div style={{ background:'#141820', borderRadius:12, padding:18, border:'1px solid #1e2533' }}>
+      {title && <div style={{ fontSize:13, fontWeight:700, color:'#e2e8f0', marginBottom:12 }}>{title}</div>}
+      {children}
+    </div>
+  );
+  const Row = ({ label, value, color='#e2e8f0' }) => (
+    <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid #1e2533' }}>
+      <span style={{ fontSize:12, color:'#8892a4' }}>{label}</span>
+      <span style={{ fontSize:13, fontWeight:700, color, fontFamily:"'JetBrains Mono',monospace" }}>{value}</span>
+    </div>
+  );
+
+  // ─── 1. Profit & Loss ─────
+  if (tab === 'pnl') return <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+    <Card title="Revenue">
+      <Row label="Total Sales" value={PKR(data.revenue)} color="#10b981"/>
+    </Card>
+    <Card title="Cost & Expenses">
+      <Row label="Purchases (COGS)" value={PKR(data.purchases)} color="#ef4444"/>
+      <Row label="Operating Expenses" value={PKR(data.expenses)} color="#ef4444"/>
+    </Card>
+    <Card title="Gross Profit">
+      <Row label="Revenue − COGS" value={PKR(data.grossProfit)} color={data.grossProfit>=0?'#10b981':'#ef4444'}/>
+    </Card>
+    <Card title="Net Profit / Loss">
+      <Row label="Margin" value={`${data.margin}%`} color={data.netProfit>=0?'#10b981':'#ef4444'}/>
+      <div style={{ marginTop:12, padding:14, background:data.netProfit>=0?'#10b98112':'#ef444412', borderRadius:8, textAlign:'center' }}>
+        <div style={{ fontSize:11, color:'#8892a4', textTransform:'uppercase', letterSpacing:1 }}>Net Profit</div>
+        <div style={{ fontSize:26, fontWeight:800, color:data.netProfit>=0?'#10b981':'#ef4444', fontFamily:"'JetBrains Mono',monospace" }}>{data.netProfit>=0?'+':''}{PKR(data.netProfit)}</div>
+      </div>
+    </Card>
+  </div>;
+
+  // ─── 2. Sales Report ─────
+  if (tab === 'sales') return <div>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:18 }}>
+      <StatCard icon={I.dollar} label="Total Sales" value={PKR(data.totals?.amount||0)} color="#10b981"/>
+      <StatCard icon={I.fuel}   label="Volume"      value={`${(data.totals?.qty||0).toLocaleString()} L`} color="#3b82f6"/>
+      <StatCard icon={I.receipt} label="Transactions" value={data.totals?.count||0} color="#8b5cf6"/>
+    </div>
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
+      <Card title="By Fuel Type">
+        <DataTable columns={[
+          { key:'name', label:'Fuel' },
+          { key:'qty', label:'Qty', align:'right', render:(v,r)=>`${v?.toLocaleString()} ${r.unit||'L'}` },
+          { key:'amount', label:'Amount', align:'right', render:v=><b style={{color:'#10b981'}}>{PKR(v)}</b> },
+        ]} data={data.byFuel||[]}/>
+      </Card>
+      <Card title="By Sale Type">
+        <DataTable columns={[
+          { key:'_id', label:'Type', render:v=><Badge text={v} color={v==='cash'?'#10b981':'#f59e0b'}/> },
+          { key:'qty', label:'Qty', align:'right', render:v=>v?.toLocaleString() },
+          { key:'amount', label:'Amount', align:'right', render:v=>PKR(v) },
+        ]} data={data.bySaleType||[]}/>
+      </Card>
+      <Card title="By Shift">
+        <DataTable columns={[
+          { key:'_id', label:'Shift', render:v=><Badge text={v} color={v==='day'?'#f59e0b':'#06b6d4'}/> },
+          { key:'qty', label:'Qty', align:'right', render:v=>v?.toLocaleString() },
+          { key:'amount', label:'Amount', align:'right', render:v=>PKR(v) },
+        ]} data={data.byShift||[]}/>
+      </Card>
+      <Card title="Top Credit Customers">
+        <DataTable columns={[
+          { key:'name', label:'Customer' },
+          { key:'count', label:'Trips', align:'right' },
+          { key:'amount', label:'Amount', align:'right', render:v=><b style={{color:'#f59e0b'}}>{PKR(v)}</b> },
+        ]} data={data.topCustomers||[]}/>
+      </Card>
+    </div>
+    <Card title="Daily Sales Trend">
+      <DataTable columns={[
+        { key:'_id', label:'Date' },
+        { key:'qty', label:'Qty (L)', align:'right', render:v=>v?.toLocaleString() },
+        { key:'count', label:'Txns', align:'right' },
+        { key:'amount', label:'Amount', align:'right', render:v=><b style={{color:'#10b981'}}>{PKR(v)}</b> },
+      ]} data={data.daily||[]}/>
+    </Card>
+  </div>;
+
+  // ─── 3. Purchase Report ─────
+  if (tab === 'purchases') return <div>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:18 }}>
+      <StatCard icon={I.cart}   label="Total Purchases" value={PKR(data.totals?.amount||0)} color="#3b82f6"/>
+      <StatCard icon={I.fuel}   label="Ordered"  value={`${(data.totals?.qty||0).toLocaleString()} L`} color="#8b5cf6"/>
+      <StatCard icon={I.fuel}   label="Received" value={`${(data.totals?.received||0).toLocaleString()} L`} color="#10b981"/>
+      <StatCard icon={I.fuel}   label="Shortage" value={`${(data.totals?.shortage||0).toLocaleString()} L`} color="#ef4444"/>
+    </div>
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
+      <Card title="By Supplier">
+        <DataTable columns={[
+          { key:'name', label:'Supplier' },
+          { key:'qty', label:'Qty', align:'right', render:v=>v?.toLocaleString() },
+          { key:'shortage', label:'Short', align:'right', render:v=><span style={{color:v>0?'#ef4444':'#10b981'}}>{v||0}</span> },
+          { key:'amount', label:'Amount', align:'right', render:v=><b style={{color:'#3b82f6'}}>{PKR(v)}</b> },
+        ]} data={data.bySupplier||[]}/>
+      </Card>
+      <Card title="By Fuel Type">
+        <DataTable columns={[
+          { key:'name', label:'Fuel' },
+          { key:'qty', label:'Qty', align:'right', render:(v,r)=>`${v?.toLocaleString()} ${r.unit||'L'}` },
+          { key:'amount', label:'Amount', align:'right', render:v=>PKR(v) },
+        ]} data={data.byFuel||[]}/>
+      </Card>
+      <Card title="By Status">
+        <DataTable columns={[
+          { key:'_id', label:'Status', render:v=><Badge text={v} color={v==='Received'?'#10b981':v==='Disputed'?'#ef4444':'#f59e0b'}/> },
+          { key:'count', label:'Receipts', align:'right' },
+          { key:'amount', label:'Amount', align:'right', render:v=>PKR(v) },
+        ]} data={data.byStatus||[]}/>
+      </Card>
+      <Card title="Daily Purchases">
+        <DataTable columns={[
+          { key:'_id', label:'Date' },
+          { key:'qty', label:'Qty', align:'right', render:v=>v?.toLocaleString() },
+          { key:'amount', label:'Amount', align:'right', render:v=>PKR(v) },
+        ]} data={data.daily||[]}/>
+      </Card>
+    </div>
+  </div>;
+
+  // ─── 4. Day Summary ─────
+  if (tab === 'day') return <div>
+    <h3 style={{ fontSize:14, color:'#8892a4', marginBottom:14 }}>Summary for {fmtDate(data.date)}</h3>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:18 }}>
+      <StatCard icon={I.dollar}  label="Sales"            value={PKR(data.sales?.amount)} color="#10b981"/>
+      <StatCard icon={I.card}    label="Cash Sales"       value={PKR(data.sales?.cash)} color="#06b6d4"/>
+      <StatCard icon={I.users}   label="Credit Sales"     value={PKR(data.sales?.credit)} color="#f59e0b"/>
+      <StatCard icon={I.cart}    label="Purchases"        value={PKR(data.purchases?.amount)} color="#3b82f6"/>
+      <StatCard icon={I.receipt} label="Expenses"         value={PKR(data.expenses?.amount)} color="#ef4444"/>
+      <StatCard icon={I.gauge}   label="Reading Sales"    value={PKR(data.readings?.amount)} color="#8b5cf6"/>
+      <StatCard icon={I.dollar}  label="Credit Collected" value={PKR(data.creditCollected?.amount)} color="#10b981"/>
+      <StatCard icon={I.truck}   label="Supplier Paid"    value={PKR(data.supplierPaid?.amount)} color="#ec4899"/>
+    </div>
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
+      <Card title="Cash Position">
+        <Row label="Cash In (sales + collections)" value={PKR(data.cash?.in)} color="#10b981"/>
+        <Row label="Cash Out (supplier + expense)" value={PKR(data.cash?.out)} color="#ef4444"/>
+        <div style={{ marginTop:8, padding:12, background:data.cash?.net>=0?'#10b98112':'#ef444412', borderRadius:8 }}>
+          <Row label="Net Cash" value={PKR(data.cash?.net)} color={data.cash?.net>=0?'#10b981':'#ef4444'}/>
+        </div>
+      </Card>
+      <Card title="Reading Reconciliation">
+        <Row label="Dispensed (L)" value={(data.readings?.dispensed||0).toLocaleString()}/>
+        <Row label="Reading Sales" value={PKR(data.readings?.amount)}/>
+        <Row label="Cash Declared" value={PKR(data.readings?.declared)}/>
+        <Row label="Short / Excess" value={PKR(data.readings?.shortExcess)} color={data.readings?.shortExcess<0?'#ef4444':'#10b981'}/>
+        <Row label="Tank Variance (L)" value={data.dips?.variance||0} color={data.dips?.variance<0?'#ef4444':'#10b981'}/>
+      </Card>
+      <Card title="Sales by Shift">
+        <DataTable columns={[
+          { key:'_id', label:'Shift', render:v=><Badge text={v} color={v==='day'?'#f59e0b':'#06b6d4'}/> },
+          { key:'qty', label:'Qty (L)', align:'right', render:v=>v?.toLocaleString() },
+          { key:'amount', label:'Amount', align:'right', render:v=>PKR(v) },
+        ]} data={data.salesByShift||[]}/>
+      </Card>
+      <Card title="Sales by Fuel">
+        <DataTable columns={[
+          { key:'name', label:'Fuel' },
+          { key:'qty', label:'Qty', align:'right', render:(v,r)=>`${v?.toLocaleString()} ${r.unit||'L'}` },
+          { key:'amount', label:'Amount', align:'right', render:v=>PKR(v) },
+        ]} data={data.salesByFuel||[]}/>
+      </Card>
+    </div>
+    <Card title="Day Profit (Gross)">
+      <div style={{ padding:14, background:data.grossProfit>=0?'#10b98112':'#ef444412', borderRadius:8, textAlign:'center' }}>
+        <div style={{ fontSize:11, color:'#8892a4', textTransform:'uppercase', letterSpacing:1 }}>Sales − Purchases</div>
+        <div style={{ fontSize:26, fontWeight:800, color:data.grossProfit>=0?'#10b981':'#ef4444', fontFamily:"'JetBrains Mono',monospace" }}>{PKR(data.grossProfit)}</div>
+      </div>
+    </Card>
+  </div>;
+
+  // ─── 5. Shift Report ─────
+  if (tab === 'shift') return <div>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:18 }}>
+      <StatCard icon={I.fuel}    label="Total Dispensed" value={`${(data.totals?.dispensed||0).toLocaleString()} L`} color="#10b981"/>
+      <StatCard icon={I.dollar}  label="Reading Sales"   value={PKR(data.totals?.amount)} color="#3b82f6"/>
+      <StatCard icon={I.card}    label="Cash Declared"   value={PKR(data.totals?.declared)} color="#06b6d4"/>
+      <StatCard icon={I.receipt} label="Short / Excess"  value={PKR(data.totals?.shortExcess)} color={data.totals?.shortExcess<0?'#ef4444':'#10b981'}/>
+    </div>
+    <Card title="By Operator">
+      <DataTable columns={[
+        { key:'name', label:'Operator', render:v=><b>{v}</b> },
+        { key:'count', label:'Shifts', align:'right' },
+        { key:'dispensed', label:'Dispensed (L)', align:'right', render:v=>v?.toLocaleString() },
+        { key:'amount', label:'Sales', align:'right', render:v=>PKR(v) },
+        { key:'declared', label:'Declared', align:'right', render:v=>PKR(v) },
+        { key:'shortExcess', label:'Short/Exc', align:'right', render:v=><b style={{color:v<0?'#ef4444':v>0?'#10b981':'#8892a4'}}>{PKR(v)}</b> },
+      ]} data={data.byOperator||[]}/>
+    </Card>
+    <div style={{ marginTop:16 }}>
+      <Card title="Shift Readings">
+        <DataTable columns={[
+          { key:'date', label:'Date', render:v=>fmtDate(v) },
+          { key:'shift', label:'Shift', render:v=><Badge text={v} color={v==='day'?'#f59e0b':'#06b6d4'}/> },
+          { key:'nozzle', label:'Nozzle', render:v=>v?.name||'—' },
+          { key:'fuelType', label:'Fuel', render:v=>v?.name||'—' },
+          { key:'dispensed', label:'Dispensed', align:'right', render:v=>v?.toLocaleString() },
+          { key:'amount', label:'Sales', align:'right', render:v=>PKR(v) },
+          { key:'shortExcess', label:'S/E', align:'right', render:v=><span style={{color:v<0?'#ef4444':'#10b981'}}>{PKR(v)}</span> },
+        ]} data={data.readings||[]}/>
+      </Card>
+    </div>
+  </div>;
+
+  // ─── 6. Stock Report ─────
+  if (tab === 'stock') return <div>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:18 }}>
+      <StatCard icon={I.box}    label="Total Capacity" value={`${(data.summary?.totalCapacity||0).toLocaleString()} L`} color="#3b82f6"/>
+      <StatCard icon={I.fuel}   label="Current Stock"  value={`${(data.summary?.totalStock||0).toLocaleString()} L`} color="#10b981"/>
+      <StatCard icon={I.dollar} label="Stock Value"    value={PKR(data.summary?.totalValue)} color="#8b5cf6"/>
+      <StatCard icon={I.receipt} label="Below Min"     value={data.summary?.belowMinCount||0} color="#ef4444"/>
+    </div>
+    <Card title="Tank-wise Stock & Movements">
+      <DataTable columns={[
+        { key:'name', label:'Tank', render:v=><b>{v}</b> },
+        { key:'fuelType', label:'Fuel', render:v=>v?.name||'—' },
+        { key:'capacity', label:'Capacity', align:'right', render:v=>`${v?.toLocaleString()} L` },
+        { key:'currentStock', label:'Stock', align:'right', render:(v,r)=><span style={{color:r.belowMin?'#ef4444':'#10b981',fontWeight:700}}>{v?.toLocaleString()} L</span> },
+        { key:'fillPct', label:'Fill', align:'right', render:v=>`${v}%` },
+        { key:'valuation', label:'Value', align:'right', render:v=>PKR(v) },
+        { key:'period', label:'Received', align:'right', render:v=>(v?.in||0).toLocaleString() },
+        { key:'period', label:'Dispensed', align:'right', render:v=>(v?.dispensed||0).toLocaleString() },
+        { key:'period', label:'Variance', align:'right', render:v=><span style={{color:(v?.variance||0)<0?'#ef4444':'#10b981'}}>{v?.variance||0}</span> },
+      ]} data={data.tanks||[]}/>
+    </Card>
+  </div>;
+
+  // ─── 7. Expense Report ─────
+  if (tab === 'expenses') return <div>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:18 }}>
+      <StatCard icon={I.receipt} label="Total Expenses" value={PKR(data.totals?.amount)} color="#ef4444"/>
+      <StatCard icon={I.receipt} label="Entries" value={data.totals?.count||0} color="#8b5cf6"/>
+    </div>
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:16 }}>
+      <Card title="By Category">
+        <DataTable columns={[
+          { key:'_id', label:'Category', render:v=><Badge text={v} color="#8b5cf6"/> },
+          { key:'count', label:'#', align:'right' },
+          { key:'amount', label:'Amount', align:'right', render:v=><b style={{color:'#ef4444'}}>{PKR(v)}</b> },
+        ]} data={data.byCategory||[]}/>
+      </Card>
+      <Card title="By Payment Method">
+        <DataTable columns={[
+          { key:'_id', label:'Method' },
+          { key:'count', label:'#', align:'right' },
+          { key:'amount', label:'Amount', align:'right', render:v=>PKR(v) },
+        ]} data={data.byMethod||[]}/>
+      </Card>
+    </div>
+    <Card title="Recent Expenses">
+      <DataTable columns={[
+        { key:'date', label:'Date', render:v=>fmtDate(v) },
+        { key:'category', label:'Category' },
+        { key:'description', label:'Description' },
+        { key:'paidTo', label:'Paid To' },
+        { key:'amount', label:'Amount', align:'right', render:v=><b style={{color:'#ef4444'}}>{PKR(v)}</b> },
+      ]} data={data.recent||[]}/>
+    </Card>
+  </div>;
+
+  // ─── 8. Fuel Profitability ─────
+  if (tab === 'fuelProfit') return <div>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:18 }}>
+      <StatCard icon={I.dollar} label="Revenue" value={PKR(data.totals?.revenue)} color="#10b981"/>
+      <StatCard icon={I.cart}   label="COGS"    value={PKR(data.totals?.cogs)} color="#ef4444"/>
+      <StatCard icon={I.chart}  label="Profit"  value={PKR(data.totals?.profit)} color={data.totals?.profit>=0?'#10b981':'#ef4444'}/>
+      <StatCard icon={I.chart}  label="Margin"  value={`${data.totals?.margin||0}%`} color="#8b5cf6"/>
+    </div>
+    <Card title="By Fuel">
+      <DataTable columns={[
+        { key:'name', label:'Fuel', render:v=><b>{v}</b> },
+        { key:'soldQty', label:'Sold', align:'right', render:(v,r)=>`${v?.toLocaleString()} ${r.unit||'L'}` },
+        { key:'revenue', label:'Revenue', align:'right', render:v=><b style={{color:'#10b981'}}>{PKR(v)}</b> },
+        { key:'avgCost', label:'Avg Cost', align:'right', render:v=>PKR(v.toFixed(2)) },
+        { key:'cogs', label:'COGS', align:'right', render:v=>PKR(v) },
+        { key:'profit', label:'Profit', align:'right', render:v=><b style={{color:v>=0?'#10b981':'#ef4444'}}>{PKR(v)}</b> },
+        { key:'margin', label:'Margin', align:'right', render:v=>`${v}%` },
+      ]} data={data.rows||[]}/>
+    </Card>
+  </div>;
+
+  // ─── 9. Credit Aging ─────
+  if (tab === 'creditAging') return <div>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(170px,1fr))', gap:14, marginBottom:18 }}>
+      <StatCard icon={I.dollar} label="Total Outstanding" value={PKR(data.total)} color="#ef4444"/>
+      <StatCard icon={I.users} label="Current (≤0d)"   value={PKR(data.buckets?.current)} color="#10b981"/>
+      <StatCard icon={I.users} label="1–30 days"        value={PKR(data.buckets?.d30)} color="#06b6d4"/>
+      <StatCard icon={I.users} label="31–60 days"       value={PKR(data.buckets?.d60)} color="#f59e0b"/>
+      <StatCard icon={I.users} label="61–90 days"       value={PKR(data.buckets?.d90)} color="#fb923c"/>
+      <StatCard icon={I.users} label="90+ days"         value={PKR(data.buckets?.d90plus)} color="#ef4444"/>
+    </div>
+    <Card title="Customer Aging">
+      <DataTable columns={[
+        { key:'name', label:'Customer', render:v=><b>{v}</b> },
+        { key:'type', label:'Type', render:v=><Badge text={v} color="#8b5cf6"/> },
+        { key:'phone', label:'Phone' },
+        { key:'creditLimit', label:'Limit', align:'right', render:v=>PKR(v) },
+        { key:'balance', label:'Balance', align:'right', render:(v,r)=><b style={{color:r.overLimit?'#ef4444':'#f59e0b'}}>{PKR(v)}</b> },
+        { key:'utilization', label:'Util', align:'right', render:v=>`${v}%` },
+        { key:'oldestDays', label:'Days', align:'right' },
+        { key:'bucket', label:'Bucket', render:v=><Badge text={v} color={v==='d90plus'?'#ef4444':v==='d90'?'#fb923c':v==='d60'?'#f59e0b':v==='d30'?'#06b6d4':'#10b981'}/> },
+      ]} data={data.rows||[]}/>
+    </Card>
+  </div>;
+
+  // ─── 10. Tank Variance ─────
+  if (tab === 'variance') return <div>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:18 }}>
+      <StatCard icon={I.drop}  label="Dip Records"  value={data.totals?.count||0} color="#3b82f6"/>
+      <StatCard icon={I.drop}  label="Net Variance" value={`${data.totals?.totalVariance||0} L`} color={data.totals?.totalVariance<0?'#ef4444':'#10b981'}/>
+      <StatCard icon={I.drop}  label="Total Gain"   value={`${data.totals?.gain||0} L`} color="#10b981"/>
+      <StatCard icon={I.drop}  label="Total Loss"   value={`${data.totals?.loss||0} L`} color="#ef4444"/>
+    </div>
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+      <Card title="Variance by Tank">
+        <DataTable columns={[
+          { key:'name', label:'Tank' },
+          { key:'count', label:'Dips', align:'right' },
+          { key:'totalVariance', label:'Net', align:'right', render:v=><b style={{color:v<0?'#ef4444':'#10b981'}}>{v} L</b> },
+          { key:'gain', label:'Gain', align:'right', render:v=><span style={{color:'#10b981'}}>{v} L</span> },
+          { key:'loss', label:'Loss', align:'right', render:v=><span style={{color:'#ef4444'}}>{v} L</span> },
+        ]} data={data.byTank||[]}/>
+      </Card>
+      <Card title="Recent Dips">
+        <DataTable columns={[
+          { key:'date', label:'Date', render:v=>fmtDate(v) },
+          { key:'tank', label:'Tank', render:v=>v?.name||'—' },
+          { key:'physicalStock', label:'Physical', align:'right' },
+          { key:'bookStock', label:'Book', align:'right' },
+          { key:'variance', label:'Var', align:'right', render:v=><b style={{color:v<0?'#ef4444':'#10b981'}}>{v}</b> },
+        ]} data={data.dips||[]}/>
+      </Card>
+    </div>
+  </div>;
+
+  // ─── 11. Monthly Trend ─────
+  if (tab === 'monthly') return <Card title="12-Month Trend">
+    <DataTable columns={[
+      { key:'label', label:'Month', render:v=><b>{v}</b> },
+      { key:'sales', label:'Sales', align:'right', render:v=><span style={{color:'#10b981'}}>{PKR(v)}</span> },
+      { key:'purchases', label:'Purchases', align:'right', render:v=><span style={{color:'#3b82f6'}}>{PKR(v)}</span> },
+      { key:'expenses', label:'Expenses', align:'right', render:v=><span style={{color:'#ef4444'}}>{PKR(v)}</span> },
+      { key:'profit', label:'Profit', align:'right', render:v=><b style={{color:v>=0?'#10b981':'#ef4444'}}>{PKR(v)}</b> },
+    ]} data={data||[]}/>
+  </Card>;
+
+  // ─── 12 / 13. Customer / Supplier Statement ─────
+  if (tab === 'customer' || tab === 'supplier') {
+    const subj = data.customer || data.supplier;
+    if (!subj) return <div style={{padding:40, textAlign:'center', color:'#8892a4'}}>Select a {tab}</div>;
+    return <div>
+      <Card title={`${tab==='customer'?'Customer':'Supplier'}: ${subj.name}`}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:12, marginBottom:14 }}>
+          <Row label="Type" value={subj.type||'—'}/>
+          <Row label="Phone" value={subj.phone||'—'}/>
+          <Row label="City" value={subj.city||'—'}/>
+          <Row label="Total Debit" value={PKR(data.totals?.debit)} color="#ef4444"/>
+          <Row label="Total Credit" value={PKR(data.totals?.credit)} color="#10b981"/>
+          <Row label="Closing Balance" value={PKR(data.totals?.closing)} color={data.totals?.closing>0?'#ef4444':'#10b981'}/>
+        </div>
+      </Card>
+      <div style={{ marginTop:16 }}>
+        <Card title="Ledger Entries">
+          <DataTable columns={[
+            { key:'date', label:'Date', render:v=>fmtDate(v) },
+            { key:'kind', label:'Type', render:v=><Badge text={v} color={v==='Sale'||v==='Purchase'?'#3b82f6':'#10b981'}/> },
+            { key:'ref',  label:'Ref' },
+            { key:'desc', label:'Description' },
+            { key:'debit',  label:'Debit',  align:'right', render:v=>v?PKR(v):'—' },
+            { key:'credit', label:'Credit', align:'right', render:v=>v?PKR(v):'—' },
+            { key:'balance',label:'Balance',align:'right', render:v=><b>{PKR(v)}</b> },
+          ]} data={data.entries||[]}/>
+        </Card>
+      </div>
+    </div>;
+  }
+
+  return null;
 };
 
 const SettingsPage = () => {

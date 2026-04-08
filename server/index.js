@@ -12,6 +12,7 @@ const purchaseRoutes = require('./routes/purchases');
 const payrollRoutes = require('./routes/payroll');
 const dashboardRoutes = require('./routes/dashboard');
 const operationsRoutes = require('./routes/operations');
+const reportsRoutes = require('./routes/reports');
 const {
   suppliersRouter, customersRouter, employeesRouter, expensesRouter,
   fuelTypesRouter, tanksRouter, nozzlesRouter, productsRouter, settingsRouter,
@@ -41,6 +42,7 @@ app.use('/api/nozzles',    nozzlesRouter);
 app.use('/api/products',   productsRouter);
 app.use('/api/settings',   settingsRouter);
 app.use('/api',            operationsRoutes);
+app.use('/api/reports',    reportsRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'FuelMaster PK API running', version: '3.0.0', env: process.env.NODE_ENV });

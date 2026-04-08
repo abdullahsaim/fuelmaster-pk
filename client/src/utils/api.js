@@ -79,6 +79,21 @@ export const historyAPI = {
   stockMovements: (params) => api.get('/stock-movements', { params }),
 };
 
+export const reportsAPI = {
+  sales:       (params) => api.get('/reports/sales',         { params }),
+  purchases:   (params) => api.get('/reports/purchases',     { params }),
+  daySummary:  (params) => api.get('/reports/day-summary',   { params }),
+  shift:       (params) => api.get('/reports/shift',         { params }),
+  stock:       (params) => api.get('/reports/stock',         { params }),
+  creditAging: (params) => api.get('/reports/credit-aging',  { params }),
+  expenses:    (params) => api.get('/reports/expenses',      { params }),
+  fuelProfit:  (params) => api.get('/reports/fuel-profit',   { params }),
+  variance:    (params) => api.get('/reports/variance',      { params }),
+  monthlyTrend:(params) => api.get('/reports/monthly-trend', { params }),
+  customer:    (id, params) => api.get(`/reports/customer/${id}`, { params }),
+  supplier:    (id, params) => api.get(`/reports/supplier/${id}`, { params }),
+};
+
 const makeCrud = (endpoint) => ({
   getAll: (params) => api.get(`/${endpoint}`, { params }),
   getOne: (id) => api.get(`/${endpoint}/${id}`),
