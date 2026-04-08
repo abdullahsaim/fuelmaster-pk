@@ -1,6 +1,7 @@
 const Sale = require('../models/Sale');
 const Tank = require('../models/Tank');
 const Customer = require('../models/Customer');
+const StockMovement = require('../models/StockMovement');
 
 // @desc    Get all sales with filters
 // @route   GET /api/sales
@@ -41,9 +42,14 @@ exports.createSale = async (req, res) => {
       date: new Date(), fuelType, tank, nozzle, quantity, rate, amount,
       saleType, customer, vehicleNumber, shift, receivedBy: req.user._id, notes,
     });
-    // Decrease tank stock
+    // Decrease tank stock + log movement
     if (tank) {
-      await Tank.findByIdAndUpdate(tank, { $inc: { currentStock: -quantity } });
+      const t = await Tank.findByIdAndUpdate(tank, { $inc: { currentStock: -quantity } }, { new: true });
+      await StockMovement.create({
+        date: sale.date, tank, fuelType, type: 'OUT', quantity, source: 'sale',
+        reference: sale._id, refModel: 'Sale', balanceAfter: t?.currentStock,
+        createdBy: req.user._id, notes: `Sale ${saleType}`,
+      });
     }
     // Increase customer balance for credit sales
     if (saleType === 'credit' && customer) {
@@ -82,6 +88,7 @@ exports.deleteSale = async (req, res) => {
     if (sale.saleType === 'credit' && sale.customer) {
       await Customer.findByIdAndUpdate(sale.customer, { $inc: { balance: -sale.amount } });
     }
+    await StockMovement.deleteMany({ reference: sale._id, refModel: 'Sale' });
     await sale.deleteOne();
     res.json({ success: true, message: 'Sale deleted' });
   } catch (error) {

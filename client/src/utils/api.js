@@ -40,6 +40,45 @@ export const salesAPI = {
   delete: (id) => api.delete(`/sales/${id}`),
 };
 
+export const purchasesAPI2 = {
+  getAll: (params) => api.get('/purchases', { params }),
+  create: (data) => api.post('/purchases', data),
+  update: (id, data) => api.put(`/purchases/${id}`, data),
+  delete: (id) => api.delete(`/purchases/${id}`),
+};
+
+export const readingsAPI = {
+  getAll: (params) => api.get('/readings', { params }),
+  create: (data) => api.post('/readings', data),
+  delete: (id) => api.delete(`/readings/${id}`),
+};
+export const dipsAPI = {
+  getAll: (params) => api.get('/dips', { params }),
+  create: (data) => api.post('/dips', data),
+  delete: (id) => api.delete(`/dips/${id}`),
+};
+export const creditPaymentsAPI = {
+  getAll: (params) => api.get('/credit-payments', { params }),
+  create: (data) => api.post('/credit-payments', data),
+  delete: (id) => api.delete(`/credit-payments/${id}`),
+  ledger: (customerId) => api.get(`/customers/${customerId}/ledger`),
+};
+export const supplierPaymentsAPI = {
+  getAll: (params) => api.get('/supplier-payments', { params }),
+  create: (data) => api.post('/supplier-payments', data),
+  delete: (id) => api.delete(`/supplier-payments/${id}`),
+};
+export const pumpsAPI = {
+  getAll: (params) => api.get('/pumps', { params }),
+  create: (data) => api.post('/pumps', data),
+  update: (id, data) => api.put(`/pumps/${id}`, data),
+  delete: (id) => api.delete(`/pumps/${id}`),
+};
+export const historyAPI = {
+  feed: (params) => api.get('/history', { params }),
+  stockMovements: (params) => api.get('/stock-movements', { params }),
+};
+
 const makeCrud = (endpoint) => ({
   getAll: (params) => api.get(`/${endpoint}`, { params }),
   getOne: (id) => api.get(`/${endpoint}/${id}`),

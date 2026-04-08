@@ -1,6 +1,7 @@
 const Purchase = require('../models/Purchase');
 const Tank = require('../models/Tank');
 const Supplier = require('../models/Supplier');
+const StockMovement = require('../models/StockMovement');
 
 exports.getPurchases = async (req, res) => {
   try {
@@ -40,7 +41,13 @@ exports.createPurchase = async (req, res) => {
     });
     // Increase tank stock when received
     if (tank && (status === 'Received' || !status)) {
-      await Tank.findByIdAndUpdate(tank, { $inc: { currentStock: receivedQuantity || quantity } });
+      const qty = receivedQuantity || quantity;
+      const t = await Tank.findByIdAndUpdate(tank, { $inc: { currentStock: qty } }, { new: true });
+      await StockMovement.create({
+        date: purchase.date, tank, fuelType, type: 'IN', quantity: qty, source: 'purchase',
+        reference: purchase._id, refModel: 'Purchase', balanceAfter: t?.currentStock,
+        createdBy: req.user._id, notes: `Purchase from supplier`,
+      });
     }
     // Increase supplier balance (amount owed)
     await Supplier.findByIdAndUpdate(supplier, { $inc: { balance: amount } });
@@ -70,6 +77,7 @@ exports.deletePurchase = async (req, res) => {
     // Reverse stock and balance
     if (purchase.tank) await Tank.findByIdAndUpdate(purchase.tank, { $inc: { currentStock: -(purchase.receivedQuantity || purchase.quantity) } });
     await Supplier.findByIdAndUpdate(purchase.supplier, { $inc: { balance: -purchase.amount } });
+    await StockMovement.deleteMany({ reference: purchase._id, refModel: 'Purchase' });
     await purchase.deleteOne();
     res.json({ success: true, message: 'Purchase deleted' });
   } catch (error) {

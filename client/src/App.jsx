@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
-import { dashboardAPI, salesAPI, purchasesAPI, suppliersAPI, customersAPI, employeesAPI, expensesAPI, payrollAPI, tanksAPI, productsAPI, fuelTypesAPI, settingsAPI } from './utils/api.js';
+import { dashboardAPI, salesAPI, purchasesAPI, suppliersAPI, customersAPI, employeesAPI, expensesAPI, payrollAPI, tanksAPI, nozzlesAPI, productsAPI, fuelTypesAPI, settingsAPI, readingsAPI, dipsAPI, creditPaymentsAPI, supplierPaymentsAPI, pumpsAPI, historyAPI } from './utils/api.js';
 import { PKR, fmtDate, daysAgo, today } from './utils/helpers.js';
 
 // ─── ICONS (inline SVG) ───
@@ -23,6 +23,10 @@ const I = {
   menu: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>,
   plus: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   x: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+  gauge: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 14l4-4"/><path d="M3.5 13.5a9 9 0 1 1 17 0"/></svg>,
+  drop: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>,
+  history: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>,
+  pump: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="4" y="3" width="10" height="18" rx="1"/><path d="M14 8h3l3 3v8a2 2 0 0 1-4 0v-7"/></svg>,
 };
 
 // ─── SHARED UI ───
@@ -299,7 +303,570 @@ const StockPage = () => {
   </div>;
 };
 
+// ─── SALES PAGE (with proper add form + filters) ───
+const SalesPage = () => {
+  const [sales, setSales] = useState([]);
+  const [fuelTypes, setFuelTypes] = useState([]);
+  const [tanks, setTanks] = useState([]);
+  const [nozzles, setNozzles] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [filter, setFilter] = useState({ saleType:'', fuelType:'', startDate:daysAgo(7), endDate:today() });
+  const [form, setForm] = useState({ shift:'day', saleType:'cash', fuelType:'', tank:'', nozzle:'', quantity:'', rate:'', customer:'', vehicleNumber:'', notes:'' });
+
+  const load = useCallback(() => {
+    setLoading(true);
+    salesAPI.getAll(filter).then(r=>{ setSales(r.data.data); setLoading(false); }).catch(()=>setLoading(false));
+  }, [filter]);
+
+  useEffect(() => {
+    Promise.all([fuelTypesAPI.getAll(), tanksAPI.getAll(), nozzlesAPI.getAll(), customersAPI.getAll()])
+      .then(([f,t,n,c])=>{ setFuelTypes(f.data.data); setTanks(t.data.data); setNozzles(n.data.data); setCustomers(c.data.data); });
+  }, []);
+  useEffect(load, [load]);
+
+  const onFuelChange = (id) => {
+    const ft = fuelTypes.find(f=>f._id===id);
+    const tank = tanks.find(t=>t.fuelType?._id===id || t.fuelType===id);
+    setForm(p=>({...p, fuelType:id, rate: ft?.currentRate || '', tank: tank?._id || ''}));
+  };
+  const submit = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = { ...form, quantity:Number(form.quantity), rate:Number(form.rate) };
+      if (payload.saleType === 'cash') { delete payload.customer; }
+      await salesAPI.create(payload);
+      toast.success('Sale recorded');
+      setModal(false);
+      setForm({ shift:'day', saleType:'cash', fuelType:'', tank:'', nozzle:'', quantity:'', rate:'', customer:'', vehicleNumber:'', notes:'' });
+      load();
+    } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
+  };
+  const del = async (id) => {
+    if(!confirm('Delete this sale? Stock and customer balance will be reversed.')) return;
+    try { await salesAPI.delete(id); toast.success('Deleted'); load(); }
+    catch(e){ toast.error('Failed'); }
+  };
+
+  const totals = sales.reduce((a,s)=>{ a.amt += s.amount||0; a.qty += s.quantity||0; if(s.saleType==='cash') a.cash += s.amount||0; else a.credit += s.amount||0; return a; }, {amt:0,qty:0,cash:0,credit:0});
+
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Sales</h2>
+      <Btn icon={I.plus} onClick={()=>setModal(true)}>New Sale</Btn>
+    </div>
+
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:20 }}>
+      <StatCard icon={I.dollar} label="Total Sales" value={PKR(totals.amt)} color="#10b981"/>
+      <StatCard icon={I.fuel} label="Volume" value={`${totals.qty.toLocaleString()} L`} color="#3b82f6"/>
+      <StatCard icon={I.card} label="Cash" value={PKR(totals.cash)} color="#06b6d4"/>
+      <StatCard icon={I.users} label="Credit" value={PKR(totals.credit)} color="#f59e0b"/>
+    </div>
+
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))', gap:12, marginBottom:16, padding:14, background:'#141820', borderRadius:12, border:'1px solid #1e2533' }}>
+      <Input label="From" type="date" value={filter.startDate} onChange={v=>setFilter(p=>({...p,startDate:v}))}/>
+      <Input label="To" type="date" value={filter.endDate} onChange={v=>setFilter(p=>({...p,endDate:v}))}/>
+      <Select label="Type" value={filter.saleType} onChange={v=>setFilter(p=>({...p,saleType:v}))} options={[{value:'',label:'All'},{value:'cash',label:'Cash'},{value:'credit',label:'Credit'}]}/>
+      <Select label="Fuel" value={filter.fuelType} onChange={v=>setFilter(p=>({...p,fuelType:v}))} options={[{value:'',label:'All'},...fuelTypes.map(f=>({value:f._id,label:f.name}))]}/>
+    </div>
+
+    {loading ? <Loader/> : <DataTable columns={[
+      { key:'date', label:'Date', render:v=>fmtDate(v) },
+      { key:'shift', label:'Shift', render:v=><Badge text={v} color={v==='day'?'#f59e0b':'#06b6d4'}/> },
+      { key:'fuelType', label:'Fuel', render:v=>v?.name||'—' },
+      { key:'quantity', label:'Qty', align:'right', render:(v,r)=>`${v} ${r.fuelType?.unit||'L'}` },
+      { key:'rate', label:'Rate', align:'right', render:v=>PKR(v) },
+      { key:'amount', label:'Total', align:'right', render:v=><b style={{color:'#10b981',fontFamily:"'JetBrains Mono',monospace"}}>{PKR(v)}</b> },
+      { key:'saleType', label:'Type', render:v=><Badge text={v} color={v==='cash'?'#10b981':'#f59e0b'}/> },
+      { key:'customer', label:'Customer', render:(v,r)=>v?.name || (r.vehicleNumber || '—') },
+      { key:'_', label:'Action', align:'center', render:(_,r)=><button onClick={()=>del(r._id)} style={{padding:'4px 10px',background:'#ef444420',border:'1px solid #ef444440',borderRadius:6,color:'#ef4444',fontSize:11,fontWeight:600,cursor:'pointer'}}>Del</button>}
+    ]} data={sales}/>}
+
+    <Modal isOpen={modal} onClose={()=>setModal(false)} title="Record New Sale">
+      <form onSubmit={submit}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Select label="Shift" value={form.shift} onChange={v=>setForm(p=>({...p,shift:v}))} options={[{value:'day',label:'Day'},{value:'night',label:'Night'}]}/>
+          <Select label="Sale Type" value={form.saleType} onChange={v=>setForm(p=>({...p,saleType:v}))} options={[{value:'cash',label:'Cash'},{value:'credit',label:'Credit'}]}/>
+          <Select label="Fuel Type" value={form.fuelType} onChange={onFuelChange} options={[{value:'',label:'Select fuel...'},...fuelTypes.map(f=>({value:f._id,label:`${f.name} (${PKR(f.currentRate)}/${f.unit})`}))]}/>
+          <Select label="Tank" value={form.tank} onChange={v=>setForm(p=>({...p,tank:v}))} options={[{value:'',label:'Select tank...'},...tanks.filter(t=>!form.fuelType||(t.fuelType?._id||t.fuelType)===form.fuelType).map(t=>({value:t._id,label:`${t.name} (${t.currentStock?.toLocaleString()} L)`}))]}/>
+          <Select label="Nozzle (optional)" value={form.nozzle} onChange={v=>setForm(p=>({...p,nozzle:v}))} options={[{value:'',label:'—'},...nozzles.map(n=>({value:n._id,label:n.name}))]}/>
+          <Input label="Quantity (Ltr)" type="number" value={form.quantity} onChange={v=>setForm(p=>({...p,quantity:v}))} required/>
+          <Input label="Rate (PKR)" type="number" value={form.rate} onChange={v=>setForm(p=>({...p,rate:v}))} required/>
+          <Input label="Total" value={form.quantity && form.rate ? PKR(Number(form.quantity)*Number(form.rate)) : '—'} onChange={()=>{}}/>
+          {form.saleType==='credit' && <Select label="Customer" value={form.customer} onChange={v=>setForm(p=>({...p,customer:v}))} options={[{value:'',label:'Select...'},...customers.map(c=>({value:c._id,label:`${c.name} (Bal: ${PKR(c.balance)})`}))]}/>}
+          {form.saleType==='credit' && <Input label="Vehicle #" value={form.vehicleNumber} onChange={v=>setForm(p=>({...p,vehicleNumber:v}))} placeholder="LHR-1234"/>}
+        </div>
+        <div style={{ display:'flex', gap:12, justifyContent:'flex-end', marginTop:20 }}>
+          <Btn variant="ghost" onClick={()=>setModal(false)}>Cancel</Btn>
+          <Btn type="submit">Record Sale</Btn>
+        </div>
+      </form>
+    </Modal>
+  </div>;
+};
+
+// ─── PURCHASES PAGE (with add form + filters) ───
 const PurchasesPage = () => {
+  const [data, setData] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [fuelTypes, setFuelTypes] = useState([]);
+  const [tanks, setTanks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ supplier:'', fuelType:'', tank:'', quantity:'', rate:'', tankerNumber:'', driverName:'', driverPhone:'', invoiceNumber:'', gatePassNumber:'', receivedQuantity:'', status:'Received', notes:'' });
+
+  const load = () => { setLoading(true); purchasesAPI.getAll().then(r=>{ setData(r.data.data); setLoading(false); }).catch(()=>setLoading(false)); };
+  useEffect(() => {
+    Promise.all([suppliersAPI.getAll(), fuelTypesAPI.getAll(), tanksAPI.getAll()])
+      .then(([s,f,t])=>{ setSuppliers(s.data.data); setFuelTypes(f.data.data); setTanks(t.data.data); });
+    load();
+  }, []);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = { ...form, quantity:Number(form.quantity), rate:Number(form.rate),
+        receivedQuantity: form.receivedQuantity ? Number(form.receivedQuantity) : Number(form.quantity) };
+      await purchasesAPI.create(payload);
+      toast.success('Purchase recorded'); setModal(false); load();
+      setForm({ supplier:'', fuelType:'', tank:'', quantity:'', rate:'', tankerNumber:'', driverName:'', driverPhone:'', invoiceNumber:'', gatePassNumber:'', receivedQuantity:'', status:'Received', notes:'' });
+    } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
+  };
+  const del = async (id) => { if(!confirm('Delete purchase? Stock and supplier balance will be reversed.')) return; try { await purchasesAPI.delete(id); toast.success('Deleted'); load(); } catch(e){ toast.error('Failed'); } };
+
+  const totals = data.reduce((a,p)=>{ a.amt += p.amount||0; a.qty += p.quantity||0; return a; }, {amt:0,qty:0});
+
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Purchases (Tanker Receipts)</h2>
+      <Btn icon={I.plus} onClick={()=>setModal(true)}>New Purchase</Btn>
+    </div>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:20 }}>
+      <StatCard icon={I.cart} label="Total Purchases" value={PKR(totals.amt)} color="#3b82f6"/>
+      <StatCard icon={I.fuel} label="Volume Received" value={`${totals.qty.toLocaleString()} L`} color="#10b981"/>
+      <StatCard icon={I.truck} label="Receipts" value={data.length} color="#8b5cf6"/>
+    </div>
+
+    {loading ? <Loader/> : <DataTable columns={[
+      { key:'date', label:'Date', render:v=>fmtDate(v) },
+      { key:'supplier', label:'Supplier', render:v=>v?.name||'—' },
+      { key:'fuelType', label:'Fuel', render:v=>v?.name||'—' },
+      { key:'tankerNumber', label:'Tanker' },
+      { key:'quantity', label:'Ordered', align:'right', render:v=>v?.toLocaleString() },
+      { key:'receivedQuantity', label:'Received', align:'right', render:v=>v?.toLocaleString() },
+      { key:'shortage', label:'Short', align:'right', render:v=><span style={{color:v>0?'#ef4444':'#10b981'}}>{v||0}</span> },
+      { key:'rate', label:'Rate', align:'right', render:v=>PKR(v) },
+      { key:'amount', label:'Total', align:'right', render:v=><b style={{color:'#3b82f6',fontFamily:"'JetBrains Mono',monospace"}}>{PKR(v)}</b> },
+      { key:'status', label:'Status', render:v=><Badge text={v||'Pending'} color={v==='Received'?'#10b981':v==='Disputed'?'#ef4444':'#f59e0b'}/> },
+      { key:'_', label:'Action', align:'center', render:(_,r)=><button onClick={()=>del(r._id)} style={{padding:'4px 10px',background:'#ef444420',border:'1px solid #ef444440',borderRadius:6,color:'#ef4444',fontSize:11,fontWeight:600,cursor:'pointer'}}>Del</button>}
+    ]} data={data}/>}
+
+    <Modal isOpen={modal} onClose={()=>setModal(false)} title="New Purchase / Tanker Receipt">
+      <form onSubmit={submit}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Select label="Supplier" value={form.supplier} onChange={v=>setForm(p=>({...p,supplier:v}))} options={[{value:'',label:'Select...'},...suppliers.map(s=>({value:s._id,label:s.name}))]}/>
+          <Select label="Fuel Type" value={form.fuelType} onChange={v=>{ const ft = fuelTypes.find(f=>f._id===v); setForm(p=>({...p,fuelType:v,rate:ft?.currentRate||p.rate})); }} options={[{value:'',label:'Select...'},...fuelTypes.map(f=>({value:f._id,label:f.name}))]}/>
+          <Select label="Tank" value={form.tank} onChange={v=>setForm(p=>({...p,tank:v}))} options={[{value:'',label:'Select...'},...tanks.filter(t=>!form.fuelType||(t.fuelType?._id||t.fuelType)===form.fuelType).map(t=>({value:t._id,label:`${t.name} (${t.currentStock?.toLocaleString()}/${t.capacity?.toLocaleString()})`}))]}/>
+          <Select label="Status" value={form.status} onChange={v=>setForm(p=>({...p,status:v}))} options={['Pending','In Transit','Received','Disputed','Cancelled'].map(s=>({value:s,label:s}))}/>
+          <Input label="Ordered Qty (L)" type="number" value={form.quantity} onChange={v=>setForm(p=>({...p,quantity:v}))} required/>
+          <Input label="Received Qty (L)" type="number" value={form.receivedQuantity} onChange={v=>setForm(p=>({...p,receivedQuantity:v}))} placeholder="(defaults to ordered)"/>
+          <Input label="Rate per Ltr" type="number" value={form.rate} onChange={v=>setForm(p=>({...p,rate:v}))} required/>
+          <Input label="Total" value={form.quantity && form.rate ? PKR(Number(form.quantity)*Number(form.rate)) : '—'} onChange={()=>{}}/>
+          <Input label="Tanker #" value={form.tankerNumber} onChange={v=>setForm(p=>({...p,tankerNumber:v}))} placeholder="LHR-4521"/>
+          <Input label="Driver" value={form.driverName} onChange={v=>setForm(p=>({...p,driverName:v}))}/>
+          <Input label="Driver Phone" value={form.driverPhone} onChange={v=>setForm(p=>({...p,driverPhone:v}))}/>
+          <Input label="Invoice #" value={form.invoiceNumber} onChange={v=>setForm(p=>({...p,invoiceNumber:v}))}/>
+          <Input label="Gate Pass #" value={form.gatePassNumber} onChange={v=>setForm(p=>({...p,gatePassNumber:v}))}/>
+        </div>
+        <div style={{ display:'flex', gap:12, justifyContent:'flex-end', marginTop:20 }}>
+          <Btn variant="ghost" onClick={()=>setModal(false)}>Cancel</Btn>
+          <Btn type="submit">Save Purchase</Btn>
+        </div>
+      </form>
+    </Modal>
+  </div>;
+};
+
+// ─── METER READINGS PAGE (per-shift nozzle readings) ───
+const ReadingsPage = () => {
+  const [data, setData] = useState([]);
+  const [nozzles, setNozzles] = useState([]);
+  const [tanks, setTanks] = useState([]);
+  const [fuelTypes, setFuelTypes] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [pumps, setPumps] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ shift:'day', pump:'', nozzle:'', tank:'', fuelType:'', opening:'', closing:'', testing:'0', rate:'', cashDeclared:'', operator:'', notes:'' });
+
+  const load = () => { setLoading(true); readingsAPI.getAll({ startDate:daysAgo(7), endDate:today() }).then(r=>{setData(r.data.data); setLoading(false);}).catch(()=>setLoading(false)); };
+  useEffect(() => {
+    Promise.all([nozzlesAPI.getAll(), tanksAPI.getAll(), fuelTypesAPI.getAll(), employeesAPI.getAll(), pumpsAPI.getAll()])
+      .then(([n,t,f,e,p])=>{ setNozzles(n.data.data); setTanks(t.data.data); setFuelTypes(f.data.data); setEmployees(e.data.data); setPumps(p.data.data); });
+    load();
+  }, []);
+
+  const onNozzleChange = (id) => {
+    const noz = nozzles.find(n=>n._id===id);
+    const tankId = noz?.tank?._id || noz?.tank;
+    const tank = tanks.find(t=>t._id===tankId);
+    const ftId = tank?.fuelType?._id || tank?.fuelType;
+    const ft = fuelTypes.find(f=>f._id===ftId);
+    setForm(p=>({...p, nozzle:id, tank:tankId||'', fuelType:ftId||'', rate:ft?.currentRate || p.rate}));
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = { ...form, opening:Number(form.opening), closing:Number(form.closing), testing:Number(form.testing||0), rate:Number(form.rate), cashDeclared:Number(form.cashDeclared||0) };
+      await readingsAPI.create(payload);
+      toast.success('Reading saved & stock updated'); setModal(false); load();
+      setForm({ shift:'day', pump:'', nozzle:'', tank:'', fuelType:'', opening:'', closing:'', testing:'0', rate:'', cashDeclared:'', operator:'', notes:'' });
+    } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
+  };
+  const del = async (id) => { if(!confirm('Delete reading? Stock will be restored.')) return; try { await readingsAPI.delete(id); toast.success('Deleted'); load(); } catch(e){ toast.error('Failed'); } };
+
+  const dispensedPreview = Math.max(0, (Number(form.closing||0) - Number(form.opening||0) - Number(form.testing||0)));
+  const amountPreview = dispensedPreview * Number(form.rate||0);
+
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Shift Meter Readings</h2>
+      <Btn icon={I.plus} onClick={()=>setModal(true)}>Close Shift</Btn>
+    </div>
+    {loading ? <Loader/> : <DataTable columns={[
+      { key:'date', label:'Date', render:v=>fmtDate(v) },
+      { key:'shift', label:'Shift', render:v=><Badge text={v} color={v==='day'?'#f59e0b':'#06b6d4'}/> },
+      { key:'nozzle', label:'Nozzle', render:v=>v?.name||'—' },
+      { key:'fuelType', label:'Fuel', render:v=>v?.name||'—' },
+      { key:'opening', label:'Opening', align:'right' },
+      { key:'closing', label:'Closing', align:'right' },
+      { key:'testing', label:'Test', align:'right' },
+      { key:'dispensed', label:'Dispensed', align:'right', render:v=><b style={{color:'#10b981'}}>{v?.toLocaleString()} L</b> },
+      { key:'rate', label:'Rate', align:'right', render:v=>PKR(v) },
+      { key:'amount', label:'Sales', align:'right', render:v=><b style={{color:'#10b981',fontFamily:"'JetBrains Mono',monospace"}}>{PKR(v)}</b> },
+      { key:'shortExcess', label:'Short/Exc', align:'right', render:v=><span style={{color:v<0?'#ef4444':v>0?'#10b981':'#8892a4',fontWeight:600}}>{PKR(v)}</span> },
+      { key:'_', label:'', render:(_,r)=><button onClick={()=>del(r._id)} style={{padding:'3px 8px',background:'#ef444420',border:'1px solid #ef444440',borderRadius:6,color:'#ef4444',fontSize:11,cursor:'pointer'}}>Del</button>}
+    ]} data={data}/>}
+    <Modal isOpen={modal} onClose={()=>setModal(false)} title="Close Shift — Nozzle Reading">
+      <form onSubmit={submit}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Select label="Shift" value={form.shift} onChange={v=>setForm(p=>({...p,shift:v}))} options={[{value:'day',label:'Day'},{value:'night',label:'Night'}]}/>
+          <Select label="Pump" value={form.pump} onChange={v=>setForm(p=>({...p,pump:v}))} options={[{value:'',label:'—'},...pumps.map(p=>({value:p._id,label:p.name}))]}/>
+          <Select label="Nozzle" value={form.nozzle} onChange={onNozzleChange} options={[{value:'',label:'Select...'},...nozzles.map(n=>({value:n._id,label:n.name}))]}/>
+          <Select label="Operator" value={form.operator} onChange={v=>setForm(p=>({...p,operator:v}))} options={[{value:'',label:'Select...'},...employees.map(e=>({value:e._id,label:e.name}))]}/>
+          <Input label="Opening Meter" type="number" value={form.opening} onChange={v=>setForm(p=>({...p,opening:v}))} required/>
+          <Input label="Closing Meter" type="number" value={form.closing} onChange={v=>setForm(p=>({...p,closing:v}))} required/>
+          <Input label="Testing (L)" type="number" value={form.testing} onChange={v=>setForm(p=>({...p,testing:v}))}/>
+          <Input label="Rate (PKR)" type="number" value={form.rate} onChange={v=>setForm(p=>({...p,rate:v}))} required/>
+          <Input label="Dispensed (L)" value={dispensedPreview.toLocaleString()} onChange={()=>{}}/>
+          <Input label="Sales Amount" value={PKR(amountPreview)} onChange={()=>{}}/>
+          <Input label="Cash Declared" type="number" value={form.cashDeclared} onChange={v=>setForm(p=>({...p,cashDeclared:v}))}/>
+          <Input label="Short/Excess" value={PKR(Number(form.cashDeclared||0) - amountPreview)} onChange={()=>{}}/>
+        </div>
+        <div style={{ display:'flex', gap:12, justifyContent:'flex-end', marginTop:20 }}>
+          <Btn variant="ghost" onClick={()=>setModal(false)}>Cancel</Btn>
+          <Btn type="submit">Save Reading</Btn>
+        </div>
+      </form>
+    </Modal>
+  </div>;
+};
+
+// ─── TANK DIPS PAGE ───
+const DipsPage = () => {
+  const [data, setData] = useState([]);
+  const [tanks, setTanks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ tank:'', shift:'opening', physicalStock:'', bookStock:'', temperature:'', waterLevel:'0', adjustStock:false, notes:'' });
+
+  const load = () => { setLoading(true); dipsAPI.getAll().then(r=>{setData(r.data.data); setLoading(false);}).catch(()=>setLoading(false)); };
+  useEffect(() => { tanksAPI.getAll().then(r=>setTanks(r.data.data)); load(); }, []);
+
+  const onTankChange = (id) => { const t = tanks.find(x=>x._id===id); setForm(p=>({...p,tank:id,bookStock:t?.currentStock || ''})); };
+  const submit = async (e) => {
+    e.preventDefault();
+    try {
+      await dipsAPI.create({ ...form, physicalStock:Number(form.physicalStock), bookStock:Number(form.bookStock), temperature:form.temperature?Number(form.temperature):undefined, waterLevel:Number(form.waterLevel||0) });
+      toast.success('Dip recorded'); setModal(false); load();
+      setForm({ tank:'', shift:'opening', physicalStock:'', bookStock:'', temperature:'', waterLevel:'0', adjustStock:false, notes:'' });
+    } catch(err) { toast.error(err.response?.data?.message||'Failed'); }
+  };
+  const del = async (id) => { if(!confirm('Delete dip?')) return; try { await dipsAPI.delete(id); toast.success('Deleted'); load(); } catch(e){ toast.error('Failed'); } };
+
+  const variancePreview = Number(form.physicalStock||0) - Number(form.bookStock||0);
+
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Tank Dip / Physical Stock</h2>
+      <Btn icon={I.plus} onClick={()=>setModal(true)}>New Dip</Btn>
+    </div>
+    {loading ? <Loader/> : <DataTable columns={[
+      { key:'date', label:'Date', render:v=>fmtDate(v) },
+      { key:'tank', label:'Tank', render:v=>v?.name||'—' },
+      { key:'shift', label:'Type' },
+      { key:'physicalStock', label:'Physical', align:'right', render:v=>`${v?.toLocaleString()} L` },
+      { key:'bookStock', label:'Book', align:'right', render:v=>`${v?.toLocaleString()} L` },
+      { key:'variance', label:'Variance', align:'right', render:v=><b style={{color:v<0?'#ef4444':v>0?'#10b981':'#8892a4'}}>{v>0?'+':''}{v?.toLocaleString()} L</b> },
+      { key:'waterLevel', label:'Water', align:'right', render:v=>`${v||0} mm` },
+      { key:'temperature', label:'Temp', align:'right', render:v=>v?`${v}°C`:'—' },
+      { key:'_', label:'', render:(_,r)=><button onClick={()=>del(r._id)} style={{padding:'3px 8px',background:'#ef444420',border:'1px solid #ef444440',borderRadius:6,color:'#ef4444',fontSize:11,cursor:'pointer'}}>Del</button>}
+    ]} data={data}/>}
+    <Modal isOpen={modal} onClose={()=>setModal(false)} title="Tank Dip Reading">
+      <form onSubmit={submit}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Select label="Tank" value={form.tank} onChange={onTankChange} options={[{value:'',label:'Select...'},...tanks.map(t=>({value:t._id,label:`${t.name} (book: ${t.currentStock?.toLocaleString()} L)`}))]}/>
+          <Select label="When" value={form.shift} onChange={v=>setForm(p=>({...p,shift:v}))} options={['opening','closing','day','night'].map(s=>({value:s,label:s}))}/>
+          <Input label="Physical Stock (L)" type="number" value={form.physicalStock} onChange={v=>setForm(p=>({...p,physicalStock:v}))} required/>
+          <Input label="Book Stock (L)" type="number" value={form.bookStock} onChange={v=>setForm(p=>({...p,bookStock:v}))} required/>
+          <Input label="Temperature (°C)" type="number" value={form.temperature} onChange={v=>setForm(p=>({...p,temperature:v}))}/>
+          <Input label="Water in Tank (mm)" type="number" value={form.waterLevel} onChange={v=>setForm(p=>({...p,waterLevel:v}))}/>
+          <Input label="Variance" value={`${variancePreview>0?'+':''}${variancePreview} L`} onChange={()=>{}}/>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:24 }}>
+            <input type="checkbox" checked={form.adjustStock} onChange={e=>setForm(p=>({...p,adjustStock:e.target.checked}))} id="adj"/>
+            <label htmlFor="adj" style={{fontSize:12,color:'#e2e8f0'}}>Adjust tank stock to physical</label>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:12, justifyContent:'flex-end', marginTop:20 }}>
+          <Btn variant="ghost" onClick={()=>setModal(false)}>Cancel</Btn>
+          <Btn type="submit">Save Dip</Btn>
+        </div>
+      </form>
+    </Modal>
+  </div>;
+};
+
+// ─── CREDIT CUSTOMERS / PAYMENTS PAGE ───
+const CreditPage = () => {
+  const [customers, setCustomers] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ customer:'', amount:'', method:'Cash', reference:'', bank:'', notes:'' });
+
+  const load = () => { setLoading(true); Promise.all([customersAPI.getAll(), creditPaymentsAPI.getAll()]).then(([c,p])=>{ setCustomers(c.data.data); setPayments(p.data.data); setLoading(false); }).catch(()=>setLoading(false)); };
+  useEffect(load, []);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    try { await creditPaymentsAPI.create({ ...form, amount:Number(form.amount) }); toast.success('Payment received'); setModal(false); setForm({ customer:'', amount:'', method:'Cash', reference:'', bank:'', notes:'' }); load(); }
+    catch(err){ toast.error(err.response?.data?.message||'Failed'); }
+  };
+  const del = async (id) => { if(!confirm('Delete payment? Customer balance will revert.')) return; try { await creditPaymentsAPI.delete(id); toast.success('Deleted'); load(); } catch(e){ toast.error('Failed'); } };
+
+  const totalOut = customers.reduce((a,c)=>a+(c.balance||0),0);
+  const overLimit = customers.filter(c=>c.creditLimit>0 && c.balance>c.creditLimit).length;
+
+  if (loading) return <Loader/>;
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Credit Customers & Payments</h2>
+      <Btn icon={I.plus} onClick={()=>setModal(true)}>Receive Payment</Btn>
+    </div>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:20 }}>
+      <StatCard icon={I.users} label="Customers" value={customers.length} color="#3b82f6"/>
+      <StatCard icon={I.dollar} label="Total Outstanding" value={PKR(totalOut)} color="#ef4444"/>
+      <StatCard icon={I.card} label="Over Limit" value={overLimit} color="#f59e0b"/>
+      <StatCard icon={I.receipt} label="Payments Recorded" value={payments.length} color="#10b981"/>
+    </div>
+
+    <h3 style={{ fontSize:14, fontWeight:700, color:'#e2e8f0', marginBottom:10 }}>Customer Balances</h3>
+    <div style={{ marginBottom:24 }}>
+      <DataTable columns={[
+        { key:'name', label:'Customer', render:v=><b>{v}</b> },
+        { key:'type', label:'Type', render:v=><Badge text={v} color="#8b5cf6"/> },
+        { key:'phone', label:'Phone' },
+        { key:'creditLimit', label:'Limit', align:'right', render:v=>PKR(v) },
+        { key:'balance', label:'Outstanding', align:'right', render:(v,r)=><b style={{color:v>(r.creditLimit||Infinity)?'#ef4444':v>0?'#f59e0b':'#10b981',fontFamily:"'JetBrains Mono',monospace"}}>{PKR(v)}</b> },
+        { key:'_', label:'Util', align:'right', render:(_,r)=>{ const p = r.creditLimit>0 ? Math.round((r.balance/r.creditLimit)*100):0; return <span style={{color:p>100?'#ef4444':p>80?'#f59e0b':'#10b981'}}>{p}%</span>; } },
+      ]} data={customers.filter(c=>c.balance>0).sort((a,b)=>(b.balance||0)-(a.balance||0))}/>
+    </div>
+
+    <h3 style={{ fontSize:14, fontWeight:700, color:'#e2e8f0', marginBottom:10 }}>Recent Payments</h3>
+    <DataTable columns={[
+      { key:'date', label:'Date', render:v=>fmtDate(v) },
+      { key:'customer', label:'Customer', render:v=>v?.name||'—' },
+      { key:'amount', label:'Amount', align:'right', render:v=><b style={{color:'#10b981',fontFamily:"'JetBrains Mono',monospace"}}>{PKR(v)}</b> },
+      { key:'method', label:'Method', render:v=><Badge text={v} color="#3b82f6"/> },
+      { key:'reference', label:'Ref' },
+      { key:'_', label:'', render:(_,r)=><button onClick={()=>del(r._id)} style={{padding:'3px 8px',background:'#ef444420',border:'1px solid #ef444440',borderRadius:6,color:'#ef4444',fontSize:11,cursor:'pointer'}}>Del</button>}
+    ]} data={payments}/>
+
+    <Modal isOpen={modal} onClose={()=>setModal(false)} title="Receive Credit Payment">
+      <form onSubmit={submit}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Select label="Customer" value={form.customer} onChange={v=>setForm(p=>({...p,customer:v}))} options={[{value:'',label:'Select...'},...customers.filter(c=>c.balance>0).map(c=>({value:c._id,label:`${c.name} — ${PKR(c.balance)}`}))]}/>
+          <Input label="Amount" type="number" value={form.amount} onChange={v=>setForm(p=>({...p,amount:v}))} required/>
+          <Select label="Method" value={form.method} onChange={v=>setForm(p=>({...p,method:v}))} options={['Cash','Bank Transfer','Cheque','Online','Adjustment'].map(m=>({value:m,label:m}))}/>
+          <Input label="Reference / Cheque #" value={form.reference} onChange={v=>setForm(p=>({...p,reference:v}))}/>
+          <Input label="Bank" value={form.bank} onChange={v=>setForm(p=>({...p,bank:v}))}/>
+        </div>
+        <div style={{ display:'flex', gap:12, justifyContent:'flex-end', marginTop:20 }}>
+          <Btn variant="ghost" onClick={()=>setModal(false)}>Cancel</Btn>
+          <Btn type="submit">Receive Payment</Btn>
+        </div>
+      </form>
+    </Modal>
+  </div>;
+};
+
+// ─── PUMPS, NOZZLES, TANKS MANAGEMENT PAGE ───
+const PumpsPage = () => {
+  const [tab, setTab] = useState('pumps');
+  const [pumps, setPumps] = useState([]);
+  const [nozzles, setNozzles] = useState([]);
+  const [tanks, setTanks] = useState([]);
+  const [fuelTypes, setFuelTypes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [edit, setEdit] = useState(null);
+  const [form, setForm] = useState({});
+
+  const load = () => { setLoading(true); Promise.all([pumpsAPI.getAll(),nozzlesAPI.getAll(),tanksAPI.getAll(),fuelTypesAPI.getAll()]).then(([p,n,t,f])=>{ setPumps(p.data.data); setNozzles(n.data.data); setTanks(t.data.data); setFuelTypes(f.data.data); setLoading(false); }).catch(()=>setLoading(false)); };
+  useEffect(load, []);
+
+  const open = (item) => {
+    setEdit(item);
+    if (tab==='pumps') setForm(item || { name:'', code:'', location:'', status:'active' });
+    if (tab==='nozzles') setForm(item ? { name:item.name, tank:item.tank?._id||item.tank, status:item.status } : { name:'', tank:'', status:'active' });
+    if (tab==='tanks') setForm(item ? { name:item.name, fuelType:item.fuelType?._id||item.fuelType, capacity:item.capacity, currentStock:item.currentStock, minLevel:item.minLevel } : { name:'', fuelType:'', capacity:'', currentStock:0, minLevel:1000 });
+    setModal(true);
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const api = tab==='pumps'?pumpsAPI:tab==='nozzles'?nozzlesAPI:tanksAPI;
+    try { if(edit) await api.update(edit._id, form); else await api.create(form); toast.success('Saved'); setModal(false); load(); }
+    catch(err){ toast.error(err.response?.data?.message||'Failed'); }
+  };
+  const del = async (id) => {
+    const api = tab==='pumps'?pumpsAPI:tab==='nozzles'?nozzlesAPI:tanksAPI;
+    if(!confirm('Delete?')) return; try { await api.delete(id); toast.success('Deleted'); load(); } catch(e){ toast.error('Failed'); }
+  };
+
+  if (loading) return <Loader/>;
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Pumps, Nozzles & Tanks</h2>
+      <Btn icon={I.plus} onClick={()=>open(null)}>Add {tab.slice(0,-1)}</Btn>
+    </div>
+    <div style={{ display:'flex', gap:8, marginBottom:18 }}>
+      {['pumps','nozzles','tanks'].map(t=>
+        <button key={t} onClick={()=>setTab(t)} style={{ padding:'8px 18px', background:tab===t?'#10b98118':'#141820', border:'1px solid '+(tab===t?'#10b98140':'#1e2533'), borderRadius:8, color:tab===t?'#10b981':'#8892a4', fontWeight:600, fontSize:12, cursor:'pointer', textTransform:'capitalize' }}>{t}</button>
+      )}
+    </div>
+
+    {tab==='pumps' && <DataTable columns={[
+      { key:'name', label:'Pump', render:v=><b>{v}</b> },
+      { key:'code', label:'Code' },
+      { key:'location', label:'Location' },
+      { key:'nozzles', label:'Nozzles', render:v=>v?.length||0 },
+      { key:'status', label:'Status', render:v=><Badge text={v} color={v==='active'?'#10b981':v==='maintenance'?'#f59e0b':'#ef4444'}/> },
+      { key:'_', label:'', align:'center', render:(_,r)=><div style={{display:'flex',gap:6,justifyContent:'center'}}><button onClick={()=>open(r)} style={{padding:'4px 10px',background:'#3b82f620',border:'1px solid #3b82f640',borderRadius:6,color:'#3b82f6',fontSize:11,cursor:'pointer'}}>Edit</button><button onClick={()=>del(r._id)} style={{padding:'4px 10px',background:'#ef444420',border:'1px solid #ef444440',borderRadius:6,color:'#ef4444',fontSize:11,cursor:'pointer'}}>Del</button></div> }
+    ]} data={pumps}/>}
+
+    {tab==='nozzles' && <DataTable columns={[
+      { key:'name', label:'Nozzle', render:v=><b>{v}</b> },
+      { key:'tank', label:'Tank', render:v=>v?.name||'—' },
+      { key:'status', label:'Status', render:v=><Badge text={v} color={v==='active'?'#10b981':v==='maintenance'?'#f59e0b':'#ef4444'}/> },
+      { key:'_', label:'', align:'center', render:(_,r)=><div style={{display:'flex',gap:6,justifyContent:'center'}}><button onClick={()=>open(r)} style={{padding:'4px 10px',background:'#3b82f620',border:'1px solid #3b82f640',borderRadius:6,color:'#3b82f6',fontSize:11,cursor:'pointer'}}>Edit</button><button onClick={()=>del(r._id)} style={{padding:'4px 10px',background:'#ef444420',border:'1px solid #ef444440',borderRadius:6,color:'#ef4444',fontSize:11,cursor:'pointer'}}>Del</button></div> }
+    ]} data={nozzles}/>}
+
+    {tab==='tanks' && <>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', gap:14, marginBottom:20 }}>{tanks.map(t=><TankGauge key={t._id} tank={t}/>)}</div>
+      <DataTable columns={[
+        { key:'name', label:'Tank', render:v=><b>{v}</b> },
+        { key:'fuelType', label:'Fuel', render:v=>v?.name||'—' },
+        { key:'capacity', label:'Capacity', align:'right', render:v=>`${v?.toLocaleString()} L` },
+        { key:'currentStock', label:'Stock', align:'right', render:v=>`${v?.toLocaleString()} L` },
+        { key:'minLevel', label:'Min', align:'right', render:v=>v?.toLocaleString() },
+        { key:'_', label:'', align:'center', render:(_,r)=><div style={{display:'flex',gap:6,justifyContent:'center'}}><button onClick={()=>open(r)} style={{padding:'4px 10px',background:'#3b82f620',border:'1px solid #3b82f640',borderRadius:6,color:'#3b82f6',fontSize:11,cursor:'pointer'}}>Edit</button><button onClick={()=>del(r._id)} style={{padding:'4px 10px',background:'#ef444420',border:'1px solid #ef444440',borderRadius:6,color:'#ef4444',fontSize:11,cursor:'pointer'}}>Del</button></div> }
+      ]} data={tanks}/>
+    </>}
+
+    <Modal isOpen={modal} onClose={()=>setModal(false)} title={`${edit?'Edit':'Add'} ${tab.slice(0,-1)}`}>
+      <form onSubmit={submit}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          {tab==='pumps' && <>
+            <Input label="Name" value={form.name||''} onChange={v=>setForm(p=>({...p,name:v}))} required/>
+            <Input label="Code" value={form.code||''} onChange={v=>setForm(p=>({...p,code:v}))}/>
+            <Input label="Location" value={form.location||''} onChange={v=>setForm(p=>({...p,location:v}))}/>
+            <Select label="Status" value={form.status||'active'} onChange={v=>setForm(p=>({...p,status:v}))} options={['active','inactive','maintenance'].map(s=>({value:s,label:s}))}/>
+          </>}
+          {tab==='nozzles' && <>
+            <Input label="Name" value={form.name||''} onChange={v=>setForm(p=>({...p,name:v}))} required/>
+            <Select label="Tank" value={form.tank||''} onChange={v=>setForm(p=>({...p,tank:v}))} options={[{value:'',label:'Select...'},...tanks.map(t=>({value:t._id,label:t.name}))]}/>
+            <Select label="Status" value={form.status||'active'} onChange={v=>setForm(p=>({...p,status:v}))} options={['active','inactive','maintenance'].map(s=>({value:s,label:s}))}/>
+          </>}
+          {tab==='tanks' && <>
+            <Input label="Name" value={form.name||''} onChange={v=>setForm(p=>({...p,name:v}))} required/>
+            <Select label="Fuel Type" value={form.fuelType||''} onChange={v=>setForm(p=>({...p,fuelType:v}))} options={[{value:'',label:'Select...'},...fuelTypes.map(f=>({value:f._id,label:f.name}))]}/>
+            <Input label="Capacity (L)" type="number" value={form.capacity||''} onChange={v=>setForm(p=>({...p,capacity:v}))} required/>
+            <Input label="Current Stock (L)" type="number" value={form.currentStock||0} onChange={v=>setForm(p=>({...p,currentStock:v}))}/>
+            <Input label="Min Level Alert" type="number" value={form.minLevel||1000} onChange={v=>setForm(p=>({...p,minLevel:v}))}/>
+          </>}
+        </div>
+        <div style={{ display:'flex', gap:12, justifyContent:'flex-end', marginTop:20 }}>
+          <Btn variant="ghost" onClick={()=>setModal(false)}>Cancel</Btn>
+          <Btn type="submit">{edit?'Update':'Create'}</Btn>
+        </div>
+      </form>
+    </Modal>
+  </div>;
+};
+
+// ─── HISTORY (unified activity feed) ───
+const HistoryPage = () => {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState({ startDate:daysAgo(7), endDate:today(), types:'sale,purchase,reading,dip,credit,payable' });
+
+  const load = useCallback(() => { setLoading(true); historyAPI.feed(filter).then(r=>{setData(r.data.data); setLoading(false);}).catch(()=>setLoading(false)); }, [filter]);
+  useEffect(load, [load]);
+
+  const toggle = (t) => {
+    const cur = filter.types.split(',').filter(Boolean);
+    const next = cur.includes(t) ? cur.filter(x=>x!==t) : [...cur, t];
+    setFilter(p=>({ ...p, types: next.join(',') }));
+  };
+
+  const allTypes = [
+    ['sale','Sales','#10b981'],['purchase','Purchases','#3b82f6'],['reading','Readings','#8b5cf6'],
+    ['dip','Dips','#06b6d4'],['credit','Credit','#f59e0b'],['payable','Payable','#ec4899'],
+  ];
+
+  return <div>
+    <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', marginBottom:18 }}>Activity History</h2>
+    <div style={{ display:'flex', gap:12, marginBottom:16, padding:14, background:'#141820', borderRadius:12, border:'1px solid #1e2533', flexWrap:'wrap', alignItems:'flex-end' }}>
+      <Input label="From" type="date" value={filter.startDate} onChange={v=>setFilter(p=>({...p,startDate:v}))}/>
+      <Input label="To" type="date" value={filter.endDate} onChange={v=>setFilter(p=>({...p,endDate:v}))}/>
+      <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+        {allTypes.map(([t,l,c])=>{ const on = filter.types.split(',').includes(t); return <button key={t} onClick={()=>toggle(t)} style={{ padding:'6px 12px', background:on?`${c}25`:'#0c0f14', border:`1px solid ${on?c+'60':'#1e2533'}`, borderRadius:6, color:on?c:'#8892a4', fontSize:11, fontWeight:600, cursor:'pointer' }}>{l}</button>; })}
+      </div>
+    </div>
+
+    {loading ? <Loader/> : <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+      {data.map((row, i) => <div key={`${row.kind}-${row._id}-${i}`} style={{ background:'#141820', border:'1px solid #1e2533', borderLeft:`3px solid ${row.color}`, borderRadius:10, padding:'12px 16px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <div style={{ display:'flex', gap:14, alignItems:'center' }}>
+          <Badge text={row.kind} color={row.color}/>
+          <div>
+            <div style={{ fontSize:13, color:'#e2e8f0', fontWeight:600 }}>{row.desc}</div>
+            <div style={{ fontSize:11, color:'#8892a4', marginTop:2 }}>{fmtDate(row.date)} {row.who && `· ${row.who}`}</div>
+          </div>
+        </div>
+        <div style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:row.color, fontSize:14 }}>
+          {row.kind==='Dip' ? `${row.amount>0?'+':''}${row.amount} L` : PKR(row.amount)}
+        </div>
+      </div>)}
+      {!data.length && <div style={{ textAlign:'center', padding:40, color:'#4a5568' }}>No activity in this period</div>}
+    </div>}
+  </div>;
+};
+
+// ─── ORIGINAL SIMPLE PURCHASES (kept under different name for fallback) ───
+const PurchasesListSimple = () => {
   const [data, setData] = useState([]); const [loading, setLoading] = useState(true);
   useEffect(() => { purchasesAPI.getAll().then(r=>{ setData(r.data.data); setLoading(false); }).catch(()=>setLoading(false)); }, []);
   if (loading) return <Loader/>;
@@ -360,16 +927,37 @@ const NAV = [
   { id:'dashboard', label:'Dashboard', icon:I.dash },
   { id:'sales', label:'Sales', icon:I.dollar },
   { id:'purchases', label:'Purchases', icon:I.cart },
+  { id:'readings', label:'Shift Readings', icon:I.gauge },
+  { id:'dips', label:'Tank Dips', icon:I.drop },
   { id:'stock', label:'Stock', icon:I.box },
+  { id:'pumps', label:'Pumps & Tanks', icon:I.pump },
+  { id:'credit', label:'Credit / Payments', icon:I.card },
   { id:'suppliers', label:'Suppliers', icon:I.truck },
   { id:'customers', label:'Customers', icon:I.users },
   { id:'employees', label:'Employees', icon:I.user },
   { id:'expenses', label:'Expenses', icon:I.receipt },
+  { id:'history', label:'History', icon:I.history },
   { id:'reports', label:'Reports', icon:I.chart },
   { id:'settings', label:'Settings', icon:I.settings },
 ];
 
-const PAGES = { dashboard:DashboardPage, sales:DashboardPage, purchases:PurchasesPage, stock:StockPage, suppliers:SuppliersPage, customers:CustomersPage, employees:EmployeesPage, expenses:ExpensesPage, reports:ReportsPage, settings:SettingsPage };
+const PAGES = {
+  dashboard:DashboardPage,
+  sales:SalesPage,
+  purchases:PurchasesPage,
+  readings:ReadingsPage,
+  dips:DipsPage,
+  stock:StockPage,
+  pumps:PumpsPage,
+  credit:CreditPage,
+  suppliers:SuppliersPage,
+  customers:CustomersPage,
+  employees:EmployeesPage,
+  expenses:ExpensesPage,
+  history:HistoryPage,
+  reports:ReportsPage,
+  settings:SettingsPage,
+};
 
 const AppLayout = () => {
   const { user, loading, logout } = useAuth();

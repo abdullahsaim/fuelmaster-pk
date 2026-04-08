@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l d:/fuelmaster-v3-hostinger/client/src/App.jsx d:/fuelmaster-v3-hostinger/server/index.js d:/fuelmaster-v3-hostinger/server/models/*.js d:/fuelmaster-v3-hostinger/server/controllers/*.js d:/fuelmaster-v3-hostinger/server/routes/*.js)",
+      "Bash(node -e \"['./models/Pump','./models/Reading','./models/CreditPayment','./models/SupplierPayment','./models/StockMovement','./models/Dip'].forEach\\(m=>require\\(m\\)\\); console.log\\('models OK'\\)\")",
+      "Bash(node -e \"const fs=require\\('fs'\\); const c=fs.readFileSync\\('src/App.jsx','utf8'\\); console.log\\('lines:',c.split\\('\\\\n'\\).length\\)\")",
+      "Bash(node -e \"const r=require\\('./routes/operations'\\); console.log\\('routes ok'\\)\")"
+    ]
+  }
+}
