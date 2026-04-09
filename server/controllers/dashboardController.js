@@ -125,9 +125,10 @@ exports.getDashboard = async (req, res) => {
       { $match: { date: { $gte: today, $lt: tomorrow } } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
+    const todayTotal = todaySales[0]?.totalAmount || 0;
     const cashPosition = {
       cashSales: todayCashSales[0]?.total || 0,
-      creditSales: (t.totalAmount || 0) - (todayCashSales[0]?.total || 0),
+      creditSales: todayTotal - (todayCashSales[0]?.total || 0),
       expenses: todayExpenses[0]?.total || 0,
       netCash: (todayCashSales[0]?.total || 0) - (todayExpenses[0]?.total || 0),
     };
