@@ -119,5 +119,12 @@ export const payrollAPI = {
   process: (data) => api.post('/payroll/process', data),
   delete: (id) => api.delete(`/payroll/${id}`),
 };
+export const cashClosingAPI = {
+  getAll: (params) => api.get('/cash-closing', { params }),
+  populate: (params) => api.get('/cash-closing/populate', { params }),
+  create: (data) => api.post('/cash-closing', data),
+  update: (id, data) => api.put(`/cash-closing/${id}`, data),
+  delete: (id) => api.delete(`/cash-closing/${id}`),
+};
 
 export default api;

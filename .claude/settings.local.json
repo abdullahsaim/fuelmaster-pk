@@ -8,7 +8,11 @@
       "Bash(node -c controllers/reportsController.js)",
       "Bash(node -c routes/reports.js)",
       "Bash(node -c index.js)",
-      "Bash(node -e \"require\\('./routes/reports'\\); console.log\\('OK'\\)\")"
+      "Bash(node -e \"require\\('./routes/reports'\\); console.log\\('OK'\\)\")",
+      "Bash(node -c server/models/CashClosing.js)",
+      "Bash(node -c server/controllers/cashClosingController.js)",
+      "Bash(node -c server/controllers/dashboardController.js)",
+      "Bash(node -c server/routes/operations.js)"
     ]
   }
 }

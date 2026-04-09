@@ -6,6 +6,8 @@ const Supplier = require('../models/Supplier');
 const Employee = require('../models/Employee');
 const Tank = require('../models/Tank');
 const FuelType = require('../models/FuelType');
+const Payroll = require('../models/Payroll');
+const CashClosing = require('../models/CashClosing');
 
 // @desc    Get complete dashboard data
 // @route   GET /api/dashboard
@@ -86,6 +88,50 @@ exports.getDashboard = async (req, res) => {
     // Recent expenses
     const recentExpenses = await Expense.find().sort({ date: -1 }).limit(5);
 
+    // ── Alerts ──
+    const alerts = [];
+
+    // Low-stock tanks
+    for (const tank of tanks) {
+      const pct = tank.capacity > 0 ? (tank.currentStock / tank.capacity) * 100 : 0;
+      if (pct < 20) {
+        alerts.push({ type: 'low_stock', severity: pct < 10 ? 'critical' : 'warning',
+          message: `${tank.name} is at ${Math.round(pct)}% (${tank.currentStock?.toLocaleString()} L)`, entity: tank._id });
+      }
+    }
+
+    // Over-limit credit customers
+    const overLimitCustomers = await Customer.find({
+      $expr: { $and: [{ $gt: ['$balance', 0] }, { $gt: ['$creditLimit', 0] }, { $gt: ['$balance', '$creditLimit'] }] }
+    }).select('name balance creditLimit').limit(10);
+    for (const c of overLimitCustomers) {
+      alerts.push({ type: 'credit_overlimit', severity: 'warning',
+        message: `${c.name} exceeded credit limit: ${c.balance?.toLocaleString()} / ${c.creditLimit?.toLocaleString()}`, entity: c._id });
+    }
+
+    // High supplier payables
+    const highPayable = await Supplier.find({ balance: { $gt: 500000 } }).select('name balance').limit(5);
+    for (const s of highPayable) {
+      alerts.push({ type: 'high_payable', severity: 'info',
+        message: `${s.name} payable: PKR ${s.balance?.toLocaleString()}`, entity: s._id });
+    }
+
+    // Today's cash position (quick calc)
+    const todayCashSales = await Sale.aggregate([
+      { $match: { date: { $gte: today, $lt: tomorrow }, saleType: 'cash' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+    const todayExpenses = await Expense.aggregate([
+      { $match: { date: { $gte: today, $lt: tomorrow } } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]);
+    const cashPosition = {
+      cashSales: todayCashSales[0]?.total || 0,
+      creditSales: (t.totalAmount || 0) - (todayCashSales[0]?.total || 0),
+      expenses: todayExpenses[0]?.total || 0,
+      netCash: (todayCashSales[0]?.total || 0) - (todayExpenses[0]?.total || 0),
+    };
+
     res.json({
       success: true,
       data: {
@@ -101,6 +147,8 @@ exports.getDashboard = async (req, res) => {
         totalPayroll: totalPayroll[0]?.total || 0,
         last7Days,
         recentExpenses,
+        alerts,
+        cashPosition,
       },
     });
   } catch (error) {

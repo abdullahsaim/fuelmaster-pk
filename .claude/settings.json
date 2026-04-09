@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -c client/src/utils/api.js)",
+      "Bash(node -e \"try { require\\('./server/models/CashClosing'\\); require\\('./server/controllers/cashClosingController'\\); console.log\\('Require test OK'\\); } catch\\(e\\) { console.error\\(e.message\\); }\")",
+      "Bash(node -e ':*)"
+    ]
+  }
+}

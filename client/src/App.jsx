@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
-import { dashboardAPI, salesAPI, purchasesAPI, suppliersAPI, customersAPI, employeesAPI, expensesAPI, payrollAPI, tanksAPI, nozzlesAPI, productsAPI, fuelTypesAPI, settingsAPI, readingsAPI, dipsAPI, creditPaymentsAPI, supplierPaymentsAPI, pumpsAPI, historyAPI, reportsAPI } from './utils/api.js';
+import { dashboardAPI, salesAPI, purchasesAPI, suppliersAPI, customersAPI, employeesAPI, expensesAPI, payrollAPI, tanksAPI, nozzlesAPI, productsAPI, fuelTypesAPI, settingsAPI, readingsAPI, dipsAPI, creditPaymentsAPI, supplierPaymentsAPI, pumpsAPI, historyAPI, reportsAPI, cashClosingAPI } from './utils/api.js';
 import { PKR, fmtDate, daysAgo, today } from './utils/helpers.js';
 
 // ─── ICONS (inline SVG) ───
@@ -27,6 +27,12 @@ const I = {
   drop: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>,
   history: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>,
   pump: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="4" y="3" width="10" height="18" rx="1"/><path d="M14 8h3l3 3v8a2 2 0 0 1-4 0v-7"/></svg>,
+  bell: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>,
+  wallet: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="6" width="20" height="14" rx="2"/><path d="M2 10h20"/><circle cx="16" cy="14" r="1.5"/></svg>,
+  money: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 12h.01M18 12h.01"/></svg>,
+  warn: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+  check: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>,
+  zap: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
 };
 
 // ─── SHARED UI ───
@@ -132,7 +138,7 @@ const LandingPage = ({ onLogin, onDemo }) => {
 
   const stats = [
     { value: '13+', label: 'Report Types' },
-    { value: '15',  label: 'Modules' },
+    { value: '18',  label: 'Modules' },
     { value: '100%',label: 'Pakistan-Ready' },
     { value: 'PKR', label: 'OGRA Rates' },
   ];
@@ -371,24 +377,131 @@ const LoginPage = ({ onBack }) => {
   </div>;
 };
 
-// ─── DASHBOARD ───
-const DashboardPage = () => {
+// ─── DASHBOARD (enhanced with alerts, cash position, quick actions) ───
+const DashboardPage = ({ onNavigate }) => {
   const [d, setD] = useState(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => { dashboardAPI.get().then(r=>{ setD(r.data.data); setLoading(false); }).catch(()=>setLoading(false)); }, []);
   if (loading) return <Loader/>;
   if (!d) return <div style={{ color:'#ef4444', padding:40 }}>Failed to load</div>;
   const t = d.todaySales||{}, y = d.yesterdaySales||{};
+  const cp = d.cashPosition || {};
+  const alerts = d.alerts || [];
+  const growthPct = y.totalAmount > 0 ? (((t.totalAmount||0) - y.totalAmount) / y.totalAmount * 100).toFixed(1) : 0;
+
   return <div>
-    <h1 style={{ fontSize:28, fontWeight:800, color:'#e2e8f0', margin:'0 0 4px' }}>Dashboard</h1>
-    <p style={{ color:'#8892a4', fontSize:13, marginBottom:24 }}>Live Overview — {fmtDate(new Date())}</p>
-    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:16, marginBottom:24 }}>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20, flexWrap:'wrap', gap:12 }}>
+      <div>
+        <h1 style={{ fontSize:28, fontWeight:800, color:'#e2e8f0', margin:'0 0 4px' }}>Dashboard</h1>
+        <p style={{ color:'#8892a4', fontSize:13, margin:0 }}>Live Overview — {fmtDate(new Date())}</p>
+      </div>
+      {/* Quick Actions */}
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+        {[
+          ['sales','+ Sale','#10b981',I.dollar],
+          ['readings','Close Shift','#8b5cf6',I.gauge],
+          ['cashClosing','Cash Close','#06b6d4',I.wallet],
+          ['reports','Reports','#3b82f6',I.chart],
+        ].map(([pg,lbl,col,ico])=>(
+          <button key={pg} onClick={()=>onNavigate?.(pg)} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 14px', background:`${col}15`, border:`1px solid ${col}35`, borderRadius:8, color:col, fontSize:12, fontWeight:600, cursor:'pointer' }}>
+            <div style={{ width:14, height:14 }}>{ico}</div>{lbl}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    {/* Alerts banner */}
+    {alerts.length > 0 && <div style={{ background:'#1a1208', border:'1px solid #f59e0b30', borderRadius:12, padding:'12px 16px', marginBottom:18, display:'flex', alignItems:'flex-start', gap:10 }}>
+      <div style={{ width:18, height:18, color:'#f59e0b', flexShrink:0, marginTop:1 }}>{I.warn}</div>
+      <div style={{ flex:1 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:'#f59e0b', marginBottom:4 }}>{alerts.length} Alert{alerts.length>1?'s':''} Requiring Attention</div>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          {alerts.slice(0,4).map((a,i)=><span key={i} style={{ fontSize:11, color:'#e2e8f0', background:a.severity==='critical'?'#ef444425':'#f59e0b18', padding:'3px 10px', borderRadius:6, border:`1px solid ${a.severity==='critical'?'#ef444440':'#f59e0b30'}` }}>{a.message}</span>)}
+          {alerts.length > 4 && <span style={{ fontSize:11, color:'#8892a4' }}>+{alerts.length-4} more</span>}
+        </div>
+      </div>
+    </div>}
+
+    {/* Primary KPIs */}
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:20 }}>
       <StatCard icon={I.dollar} label="Today Revenue" value={PKR(t.totalAmount||0)} color="#10b981"/>
       <StatCard icon={I.fuel} label="Fuel Sold" value={`${(t.totalQty||0).toLocaleString()} Ltr`} color="#3b82f6"/>
       <StatCard icon={I.users} label="Credit Outstanding" value={PKR(d.creditOutstanding?.totalBalance||0)} color="#f59e0b"/>
       <StatCard icon={I.receipt} label="Monthly Expenses" value={PKR(d.monthlyExpenses?.totalAmount||0)} color="#ef4444"/>
     </div>
-    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:24 }}>
+
+    {/* Cash Position + Monthly P&L */}
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20 }}>
+      <div style={{ background:'#141820', borderRadius:14, padding:20, border:'1px solid #1e2533' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+          <div style={{ fontSize:14, fontWeight:700, color:'#e2e8f0' }}>Today's Cash Position</div>
+          <div style={{ width:18, height:18, color:'#10b981' }}>{I.wallet}</div>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid #1e2533' }}>
+          <span style={{ fontSize:12, color:'#8892a4' }}>Cash Sales</span>
+          <span style={{ fontSize:13, fontWeight:700, color:'#10b981', fontFamily:"'JetBrains Mono',monospace" }}>{PKR(cp.cashSales)}</span>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid #1e2533' }}>
+          <span style={{ fontSize:12, color:'#8892a4' }}>Credit Sales</span>
+          <span style={{ fontSize:13, fontWeight:700, color:'#f59e0b', fontFamily:"'JetBrains Mono',monospace" }}>{PKR(cp.creditSales)}</span>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid #1e2533' }}>
+          <span style={{ fontSize:12, color:'#8892a4' }}>Today Expenses</span>
+          <span style={{ fontSize:13, fontWeight:700, color:'#ef4444', fontFamily:"'JetBrains Mono',monospace" }}>-{PKR(cp.expenses)}</span>
+        </div>
+        <div style={{ marginTop:8, padding:10, background:cp.netCash>=0?'#10b98112':'#ef444412', borderRadius:8, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+          <span style={{ fontSize:12, color:'#8892a4', fontWeight:600 }}>Net Cash Today</span>
+          <span style={{ fontSize:18, fontWeight:800, color:cp.netCash>=0?'#10b981':'#ef4444', fontFamily:"'JetBrains Mono',monospace" }}>{PKR(cp.netCash)}</span>
+        </div>
+      </div>
+
+      <div style={{ background:'#141820', borderRadius:14, padding:20, border:'1px solid #1e2533' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+          <div style={{ fontSize:14, fontWeight:700, color:'#e2e8f0' }}>Business Snapshot</div>
+          <div style={{ width:18, height:18, color:'#3b82f6' }}>{I.chart}</div>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid #1e2533' }}>
+          <span style={{ fontSize:12, color:'#8892a4' }}>Yesterday Revenue</span>
+          <span style={{ fontSize:13, fontWeight:700, color:'#e2e8f0', fontFamily:"'JetBrains Mono',monospace" }}>{PKR(y.totalAmount||0)}</span>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid #1e2533' }}>
+          <span style={{ fontSize:12, color:'#8892a4' }}>Today vs Yesterday</span>
+          <span style={{ fontSize:13, fontWeight:700, color:growthPct>=0?'#10b981':'#ef4444', fontFamily:"'JetBrains Mono',monospace" }}>{growthPct>0?'+':''}{growthPct}%</span>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid #1e2533' }}>
+          <span style={{ fontSize:12, color:'#8892a4' }}>Monthly Sales</span>
+          <span style={{ fontSize:13, fontWeight:700, color:'#10b981', fontFamily:"'JetBrains Mono',monospace" }}>{PKR(d.monthlySales?.totalAmount||0)}</span>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid #1e2533' }}>
+          <span style={{ fontSize:12, color:'#8892a4' }}>Supplier Payable</span>
+          <span style={{ fontSize:13, fontWeight:700, color:'#ef4444', fontFamily:"'JetBrains Mono',monospace" }}>{PKR(d.supplierPayable?.totalBalance||0)}</span>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 0' }}>
+          <span style={{ fontSize:12, color:'#8892a4' }}>Active Staff</span>
+          <span style={{ fontSize:13, fontWeight:700, color:'#8b5cf6', fontFamily:"'JetBrains Mono',monospace" }}>{d.employeeCount} · {PKR(d.totalPayroll)}/mo</span>
+        </div>
+      </div>
+    </div>
+
+    {/* 7-Day Revenue Bar Chart */}
+    <div style={{ background:'#141820', borderRadius:14, padding:20, border:'1px solid #1e2533', marginBottom:20 }}>
+      <div style={{ fontSize:14, fontWeight:700, color:'#e2e8f0', marginBottom:14 }}>Last 7 Days Revenue</div>
+      <div style={{ display:'flex', alignItems:'flex-end', gap:8, height:120 }}>
+        {d.last7Days?.map((day, i) => {
+          const max = Math.max(...d.last7Days.map(x=>x.total), 1);
+          const h = Math.max(4, (day.total / max) * 100);
+          const isToday = i === d.last7Days.length - 1;
+          return <div key={day.date} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+            <span style={{ fontSize:10, color:'#8892a4', fontFamily:"'JetBrains Mono',monospace" }}>{day.total > 0 ? `${(day.total/1000).toFixed(0)}k` : '0'}</span>
+            <div style={{ width:'100%', height:`${h}%`, background:isToday?'linear-gradient(180deg,#10b981,#059669)':'#1e2533', borderRadius:6, minHeight:4, transition:'height 0.5s' }}/>
+            <span style={{ fontSize:9, color:isToday?'#10b981':'#4a5568', fontWeight:isToday?700:400 }}>{day.date.slice(5)}</span>
+          </div>;
+        })}
+      </div>
+    </div>
+
+    {/* Fuel Rates + Recent Expenses */}
+    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16, marginBottom:20 }}>
       <div style={{ background:'#141820', borderRadius:14, padding:20, border:'1px solid #1e2533' }}>
         <div style={{ fontSize:14, fontWeight:700, color:'#e2e8f0', marginBottom:12 }}>Current Fuel Rates (OGRA)</div>
         {d.fuelTypes?.map(f=><div key={f._id} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid #1e2533' }}>
@@ -404,6 +517,7 @@ const DashboardPage = () => {
         </div>)}
       </div>
     </div>
+
     <h2 style={{ fontSize:18, fontWeight:700, color:'#e2e8f0', marginBottom:14 }}>Tank Levels</h2>
     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', gap:16 }}>
       {d.tanks?.map(t=><TankGauge key={t._id} tank={t}/>)}
@@ -1591,26 +1705,502 @@ const ReportView = ({ tab, data }) => {
   return null;
 };
 
+// ─── SETTINGS PAGE (fully editable) ─────────────────────────────
 const SettingsPage = () => {
-  const [s, setS] = useState(null); const [ft, setFt] = useState([]); const [loading, setLoading] = useState(true);
-  useEffect(() => { Promise.all([settingsAPI.getAll(),fuelTypesAPI.getAll()]).then(([a,b])=>{setS(a.data.data?.[0]||{});setFt(b.data.data);setLoading(false);}).catch(()=>setLoading(false)); }, []);
+  const [tab, setTab] = useState('station');
+  const [s, setS] = useState(null);
+  const [ft, setFt] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [rateEdits, setRateEdits] = useState({});           // {fuelId: newRate}
+  const [fuelModal, setFuelModal] = useState(false);
+  const [fuelEdit, setFuelEdit] = useState(null);
+  const [fuelForm, setFuelForm] = useState({ name:'', code:'', currentRate:'', unit:'Ltr', color:'#10b981', isActive:true });
+
+  const load = useCallback(() => {
+    setLoading(true);
+    Promise.all([settingsAPI.getAll(), fuelTypesAPI.getAll()])
+      .then(([a, b]) => { setS(a.data.data?.[0] || {}); setFt(b.data.data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+  useEffect(load, [load]);
+
+  // ── Station info save (create-or-update) ──
+  const saveStation = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      if (s._id) await settingsAPI.update(s._id, s);
+      else { const r = await settingsAPI.create(s); setS(r.data.data); }
+      toast.success('Settings saved');
+    } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
+    setSaving(false);
+  };
+
+  // ── Inline OGRA rate update ──
+  const saveRate = async (fuel) => {
+    const newRate = Number(rateEdits[fuel._id]);
+    if (!newRate || newRate <= 0) return toast.error('Enter a valid rate');
+    try {
+      await fuelTypesAPI.update(fuel._id, { currentRate: newRate });
+      toast.success(`${fuel.name} rate updated`);
+      setRateEdits(p => { const n = {...p}; delete n[fuel._id]; return n; });
+      load();
+    } catch (err) { toast.error('Failed'); }
+  };
+
+  // ── Fuel type CRUD ──
+  const openFuel = (f) => {
+    setFuelEdit(f);
+    setFuelForm(f ? { name:f.name, code:f.code, currentRate:f.currentRate, unit:f.unit, color:f.color, isActive:f.isActive } : { name:'', code:'', currentRate:'', unit:'Ltr', color:'#10b981', isActive:true });
+    setFuelModal(true);
+  };
+  const submitFuel = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = { ...fuelForm, currentRate: Number(fuelForm.currentRate) };
+      if (fuelEdit) await fuelTypesAPI.update(fuelEdit._id, payload);
+      else await fuelTypesAPI.create(payload);
+      toast.success('Saved'); setFuelModal(false); load();
+    } catch (err) { toast.error(err.response?.data?.message || 'Failed'); }
+  };
+  const delFuel = async (id) => {
+    if (!confirm('Delete this fuel type?')) return;
+    try { await fuelTypesAPI.delete(id); toast.success('Deleted'); load(); }
+    catch (e) { toast.error('Failed'); }
+  };
+
+  if (loading) return <Loader/>;
+
+  const upd = (k, v) => setS(p => ({ ...p, [k]: v }));
+  const TABS = [
+    ['station',  'Station Info'],
+    ['shifts',   'Shift Timings'],
+    ['tax',      'Tax & Currency'],
+    ['fuels',    'Fuel Types & Rates'],
+  ];
+
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Settings</h2>
+    </div>
+    <div style={{ display:'flex', gap:8, marginBottom:18, flexWrap:'wrap' }}>
+      {TABS.map(([id, label]) =>
+        <button key={id} onClick={()=>setTab(id)} style={{ padding:'8px 18px', background:tab===id?'#10b98118':'#141820', border:'1px solid '+(tab===id?'#10b98140':'#1e2533'), borderRadius:8, color:tab===id?'#10b981':'#8892a4', fontWeight:600, fontSize:12, cursor:'pointer' }}>{label}</button>
+      )}
+    </div>
+
+    {tab === 'station' && <form onSubmit={saveStation}>
+      <div style={{ background:'#141820', borderRadius:14, padding:24, border:'1px solid #1e2533' }}>
+        <div style={{ fontSize:16, fontWeight:700, color:'#e2e8f0', marginBottom:16 }}>Station Information</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Input label="Station Name"   value={s.stationName||''}   onChange={v=>upd('stationName',v)} required/>
+          <Select label="Brand"         value={s.brand||'PSO'}      onChange={v=>upd('brand',v)} options={['PSO','Shell','Total Parco','Attock','Hascol','GO','Caltex','Other'].map(b=>({value:b,label:b}))}/>
+          <Input label="Owner Name"     value={s.ownerName||''}     onChange={v=>upd('ownerName',v)}/>
+          <Input label="Dealer License" value={s.dealerLicense||''} onChange={v=>upd('dealerLicense',v)}/>
+          <Input label="Phone"          value={s.phone||''}         onChange={v=>upd('phone',v)}/>
+          <Input label="Email"          value={s.email||''}         onChange={v=>upd('email',v)} type="email"/>
+          <Input label="Address"        value={s.address||''}       onChange={v=>upd('address',v)}/>
+          <Input label="City"           value={s.city||''}          onChange={v=>upd('city',v)}/>
+          <Select label="Province"      value={s.province||'Punjab'} onChange={v=>upd('province',v)} options={['Punjab','Sindh','KPK','Balochistan','Islamabad','AJK','GB'].map(p=>({value:p,label:p}))}/>
+          <Input label="NTN"            value={s.ntn||''}           onChange={v=>upd('ntn',v)}/>
+          <Input label="STRN"           value={s.strn||''}          onChange={v=>upd('strn',v)}/>
+          <Input label="Logo URL"       value={s.logo||''}          onChange={v=>upd('logo',v)} placeholder="https://..."/>
+        </div>
+        <div style={{ display:'flex', justifyContent:'flex-end', marginTop:20 }}>
+          <Btn type="submit">{saving?'Saving...':'Save Station Info'}</Btn>
+        </div>
+      </div>
+    </form>}
+
+    {tab === 'shifts' && <form onSubmit={saveStation}>
+      <div style={{ background:'#141820', borderRadius:14, padding:24, border:'1px solid #1e2533' }}>
+        <div style={{ fontSize:16, fontWeight:700, color:'#e2e8f0', marginBottom:6 }}>Shift Timings</div>
+        <div style={{ fontSize:12, color:'#8892a4', marginBottom:16 }}>Used by readings, sales, and reports for shift filtering.</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Input label="Day Shift Start"   type="time" value={s.dayShiftStart||'06:00'}   onChange={v=>upd('dayShiftStart',v)}/>
+          <Input label="Day Shift End"     type="time" value={s.dayShiftEnd||'18:00'}     onChange={v=>upd('dayShiftEnd',v)}/>
+          <Input label="Night Shift Start" type="time" value={s.nightShiftStart||'18:00'} onChange={v=>upd('nightShiftStart',v)}/>
+          <Input label="Night Shift End"   type="time" value={s.nightShiftEnd||'06:00'}   onChange={v=>upd('nightShiftEnd',v)}/>
+        </div>
+        <div style={{ display:'flex', justifyContent:'flex-end', marginTop:20 }}>
+          <Btn type="submit">{saving?'Saving...':'Save Shift Timings'}</Btn>
+        </div>
+      </div>
+    </form>}
+
+    {tab === 'tax' && <form onSubmit={saveStation}>
+      <div style={{ background:'#141820', borderRadius:14, padding:24, border:'1px solid #1e2533' }}>
+        <div style={{ fontSize:16, fontWeight:700, color:'#e2e8f0', marginBottom:16 }}>Tax & Currency</div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Input label="GST %"   type="number" value={s.gst||17} onChange={v=>upd('gst',Number(v))}/>
+          <Input label="Currency" value={s.currency||'PKR'} onChange={v=>upd('currency',v)}/>
+        </div>
+        <div style={{ display:'flex', justifyContent:'flex-end', marginTop:20 }}>
+          <Btn type="submit">{saving?'Saving...':'Save Tax Settings'}</Btn>
+        </div>
+      </div>
+    </form>}
+
+    {tab === 'fuels' && <div>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+        <div style={{ fontSize:14, color:'#8892a4' }}>Update OGRA notified rates inline. Rates flow to all new sales automatically.</div>
+        <Btn icon={I.plus} onClick={()=>openFuel(null)}>Add Fuel Type</Btn>
+      </div>
+      <div style={{ background:'#141820', borderRadius:14, padding:24, border:'1px solid #1e2533' }}>
+        {ft.map(f => {
+          const editing = rateEdits[f._id] !== undefined;
+          return <div key={f._id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, padding:'14px 0', borderBottom:'1px solid #1e2533' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:12, flex:1 }}>
+              <div style={{ width:12, height:12, borderRadius:'50%', background:f.color, boxShadow:`0 0 12px ${f.color}40` }}/>
+              <div>
+                <div style={{ fontSize:14, fontWeight:700, color:'#e2e8f0' }}>{f.name}</div>
+                <div style={{ fontSize:11, color:'#8892a4' }}>{f.code} · per {f.unit} {!f.isActive && <Badge text="Inactive" color="#ef4444"/>}</div>
+              </div>
+            </div>
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              {editing ? <>
+                <input type="number" autoFocus value={rateEdits[f._id]} onChange={e=>setRateEdits(p=>({...p,[f._id]:e.target.value}))}
+                  style={{ width:120, padding:'8px 12px', background:'#0c0f14', border:'1px solid #10b98140', borderRadius:8, color:'#e2e8f0', fontSize:13, outline:'none', fontFamily:"'JetBrains Mono',monospace", textAlign:'right' }}/>
+                <button onClick={()=>saveRate(f)} style={{ padding:'7px 14px', background:'#10b981', border:'none', borderRadius:6, color:'#fff', fontSize:11, fontWeight:600, cursor:'pointer' }}>Save</button>
+                <button onClick={()=>setRateEdits(p=>{const n={...p}; delete n[f._id]; return n;})} style={{ padding:'7px 12px', background:'transparent', border:'1px solid #1e2533', borderRadius:6, color:'#8892a4', fontSize:11, cursor:'pointer' }}>Cancel</button>
+              </> : <>
+                <span style={{ fontSize:15, fontWeight:700, color:f.color, fontFamily:"'JetBrains Mono',monospace", minWidth:120, textAlign:'right' }}>{PKR(f.currentRate)}/{f.unit}</span>
+                <button onClick={()=>setRateEdits(p=>({...p,[f._id]:f.currentRate}))} style={{ padding:'6px 12px', background:'#3b82f620', border:'1px solid #3b82f640', borderRadius:6, color:'#3b82f6', fontSize:11, fontWeight:600, cursor:'pointer' }}>Update Rate</button>
+                <button onClick={()=>openFuel(f)} style={{ padding:'6px 12px', background:'#8b5cf620', border:'1px solid #8b5cf640', borderRadius:6, color:'#8b5cf6', fontSize:11, fontWeight:600, cursor:'pointer' }}>Edit</button>
+                <button onClick={()=>delFuel(f._id)} style={{ padding:'6px 12px', background:'#ef444420', border:'1px solid #ef444440', borderRadius:6, color:'#ef4444', fontSize:11, fontWeight:600, cursor:'pointer' }}>Del</button>
+              </>}
+            </div>
+          </div>;
+        })}
+        {!ft.length && <div style={{ padding:30, textAlign:'center', color:'#4a5568' }}>No fuel types defined</div>}
+      </div>
+
+      <Modal isOpen={fuelModal} onClose={()=>setFuelModal(false)} title={fuelEdit?'Edit Fuel Type':'Add Fuel Type'}>
+        <form onSubmit={submitFuel}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+            <Input label="Name" value={fuelForm.name} onChange={v=>setFuelForm(p=>({...p,name:v}))} required/>
+            <Input label="Code" value={fuelForm.code} onChange={v=>setFuelForm(p=>({...p,code:v}))} placeholder="petrol, diesel, hobc..." required/>
+            <Input label="Current Rate" type="number" value={fuelForm.currentRate} onChange={v=>setFuelForm(p=>({...p,currentRate:v}))} required/>
+            <Select label="Unit" value={fuelForm.unit} onChange={v=>setFuelForm(p=>({...p,unit:v}))} options={[{value:'Ltr',label:'Litre'},{value:'Kg',label:'Kilogram'}]}/>
+            <Input label="Color (hex)" value={fuelForm.color} onChange={v=>setFuelForm(p=>({...p,color:v}))} placeholder="#10b981"/>
+            <Select label="Status" value={fuelForm.isActive?'1':'0'} onChange={v=>setFuelForm(p=>({...p,isActive:v==='1'}))} options={[{value:'1',label:'Active'},{value:'0',label:'Inactive'}]}/>
+          </div>
+          <div style={{ display:'flex', gap:12, justifyContent:'flex-end', marginTop:20 }}>
+            <Btn variant="ghost" onClick={()=>setFuelModal(false)}>Cancel</Btn>
+            <Btn type="submit">{fuelEdit?'Update':'Create'}</Btn>
+          </div>
+        </form>
+      </Modal>
+    </div>}
+  </div>;
+};
+
+// ─── SUPPLIER PAYMENTS PAGE ───
+const SupplierPaymentsPage = () => {
+  const [suppliers, setSuppliers] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ supplier:'', amount:'', method:'Cash', reference:'', bank:'', notes:'' });
+
+  const load = () => { setLoading(true); Promise.all([suppliersAPI.getAll(), supplierPaymentsAPI.getAll()]).then(([s,p])=>{ setSuppliers(s.data.data); setPayments(p.data.data); setLoading(false); }).catch(()=>setLoading(false)); };
+  useEffect(load, []);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    try { await supplierPaymentsAPI.create({ ...form, amount:Number(form.amount) }); toast.success('Payment recorded'); setModal(false); setForm({ supplier:'', amount:'', method:'Cash', reference:'', bank:'', notes:'' }); load(); }
+    catch(err){ toast.error(err.response?.data?.message||'Failed'); }
+  };
+  const del = async (id) => { if(!confirm('Delete payment? Supplier balance will revert.')) return; try { await supplierPaymentsAPI.delete(id); toast.success('Deleted'); load(); } catch(e){ toast.error('Failed'); } };
+
+  const totalPaid = payments.reduce((a,p)=>a+(p.amount||0),0);
+  const totalPayable = suppliers.reduce((a,s)=>a+(s.balance||0),0);
+
   if (loading) return <Loader/>;
   return <div>
-    <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', marginBottom:20 }}>Settings</h2>
-    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
-      <div style={{ background:'#141820', borderRadius:14, padding:24, border:'1px solid #1e2533' }}>
-        <div style={{ fontSize:16, fontWeight:700, color:'#e2e8f0', marginBottom:16 }}>Station Info</div>
-        {[['Station',s?.stationName],['Brand',s?.brand],['Owner',s?.ownerName],['City',s?.city],['NTN',s?.ntn],['Phone',s?.phone]].map(([l,v])=>
-          <div key={l} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #1e2533'}}><span style={{fontSize:12,color:'#8892a4'}}>{l}</span><span style={{fontSize:13,color:'#e2e8f0',fontWeight:600}}>{v||'—'}</span></div>)}
-      </div>
-      <div style={{ background:'#141820', borderRadius:14, padding:24, border:'1px solid #1e2533' }}>
-        <div style={{ fontSize:16, fontWeight:700, color:'#e2e8f0', marginBottom:16 }}>OGRA Rates</div>
-        {ft.map(f=><div key={f._id} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:'1px solid #1e2533'}}>
-          <div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:10,height:10,borderRadius:'50%',background:f.color}}/><span style={{fontSize:13,color:'#e2e8f0'}}>{f.name}</span></div>
-          <span style={{fontWeight:700,color:f.color,fontFamily:"'JetBrains Mono',monospace"}}>{PKR(f.currentRate)}/{f.unit}</span>
-        </div>)}
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Supplier Payments</h2>
+      <Btn icon={I.plus} onClick={()=>setModal(true)}>Make Payment</Btn>
+    </div>
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:20 }}>
+      <StatCard icon={I.truck} label="Suppliers" value={suppliers.length} color="#3b82f6"/>
+      <StatCard icon={I.dollar} label="Total Payable" value={PKR(totalPayable)} color="#ef4444"/>
+      <StatCard icon={I.money} label="Total Paid" value={PKR(totalPaid)} color="#10b981"/>
+      <StatCard icon={I.receipt} label="Payments" value={payments.length} color="#8b5cf6"/>
+    </div>
+
+    <h3 style={{ fontSize:14, fontWeight:700, color:'#e2e8f0', marginBottom:10 }}>Supplier Balances</h3>
+    <div style={{ marginBottom:24 }}>
+      <DataTable columns={[
+        { key:'name', label:'Supplier', render:v=><b>{v}</b> },
+        { key:'type', label:'Type', render:v=><Badge text={v} color="#3b82f6"/> },
+        { key:'phone', label:'Phone' },
+        { key:'balance', label:'Payable', align:'right', render:v=><b style={{color:v>0?'#ef4444':'#10b981',fontFamily:"'JetBrains Mono',monospace"}}>{PKR(v)}</b> },
+      ]} data={suppliers.filter(s=>s.balance>0).sort((a,b)=>(b.balance||0)-(a.balance||0))}/>
+    </div>
+
+    <h3 style={{ fontSize:14, fontWeight:700, color:'#e2e8f0', marginBottom:10 }}>Recent Payments</h3>
+    <DataTable columns={[
+      { key:'date', label:'Date', render:v=>fmtDate(v) },
+      { key:'supplier', label:'Supplier', render:v=>v?.name||'—' },
+      { key:'amount', label:'Amount', align:'right', render:v=><b style={{color:'#10b981',fontFamily:"'JetBrains Mono',monospace"}}>{PKR(v)}</b> },
+      { key:'method', label:'Method', render:v=><Badge text={v} color="#3b82f6"/> },
+      { key:'reference', label:'Ref' },
+      { key:'_', label:'', render:(_,r)=><button onClick={()=>del(r._id)} style={{padding:'3px 8px',background:'#ef444420',border:'1px solid #ef444440',borderRadius:6,color:'#ef4444',fontSize:11,cursor:'pointer'}}>Del</button>}
+    ]} data={payments}/>
+
+    <Modal isOpen={modal} onClose={()=>setModal(false)} title="Make Supplier Payment">
+      <form onSubmit={submit}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Select label="Supplier" value={form.supplier} onChange={v=>setForm(p=>({...p,supplier:v}))} options={[{value:'',label:'Select...'},...suppliers.filter(s=>s.balance>0).map(s=>({value:s._id,label:`${s.name} — ${PKR(s.balance)}`}))]}/>
+          <Input label="Amount" type="number" value={form.amount} onChange={v=>setForm(p=>({...p,amount:v}))} required/>
+          <Select label="Method" value={form.method} onChange={v=>setForm(p=>({...p,method:v}))} options={['Cash','Bank Transfer','Cheque','Online'].map(m=>({value:m,label:m}))}/>
+          <Input label="Reference / Cheque #" value={form.reference} onChange={v=>setForm(p=>({...p,reference:v}))}/>
+          <Input label="Bank" value={form.bank} onChange={v=>setForm(p=>({...p,bank:v}))}/>
+        </div>
+        <div style={{ display:'flex', gap:12, justifyContent:'flex-end', marginTop:20 }}>
+          <Btn variant="ghost" onClick={()=>setModal(false)}>Cancel</Btn>
+          <Btn type="submit">Record Payment</Btn>
+        </div>
+      </form>
+    </Modal>
+  </div>;
+};
+
+// ─── PAYROLL PAGE ───
+const PayrollPage = () => {
+  const [payrolls, setPayrolls] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [editModal, setEditModal] = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const nowMonth = new Date().toISOString().slice(0,7); // "2026-04"
+  const [genMonth, setGenMonth] = useState(nowMonth);
+  const [filterMonth, setFilterMonth] = useState(nowMonth);
+
+  const load = () => { setLoading(true);
+    const [y, m] = filterMonth.split('-');
+    Promise.all([payrollAPI.getAll({ month: filterMonth, year: y }), employeesAPI.getAll()])
+      .then(([p,e])=>{ setPayrolls(p.data.data); setEmployees(e.data.data); setLoading(false); }).catch(()=>setLoading(false));
+  };
+  useEffect(load, [filterMonth]);
+
+  const generate = async () => {
+    const [y, m] = genMonth.split('-');
+    try { await payrollAPI.generate({ month: genMonth, year: parseInt(y) }); toast.success('Payroll generated'); setFilterMonth(genMonth); load(); }
+    catch(err){ toast.error(err.response?.data?.message||'Failed'); }
+  };
+
+  const processAll = async () => {
+    if (!confirm('Mark all pending payrolls as Paid?')) return;
+    const [y] = filterMonth.split('-');
+    try { await payrollAPI.process({ month: filterMonth, year: parseInt(y) }); toast.success('Payrolls processed'); load(); }
+    catch(err){ toast.error(err.response?.data?.message||'Failed'); }
+  };
+
+  const openEdit = (item) => {
+    setEditItem(item);
+    setEditForm({ overtime: item.overtime||0, bonus: item.bonus||0, deductions: item.deductions||0, advance: item.advance||0, loanDeduction: item.loanDeduction||0, status: item.status, notes: item.notes||'',
+      attendance: { present: item.attendance?.present||30, absent: item.attendance?.absent||0, late: item.attendance?.late||0, leaves: item.attendance?.leaves||0 }
+    });
+    setEditModal(true);
+  };
+  const submitEdit = async (e) => {
+    e.preventDefault();
+    try { await payrollAPI.update(editItem._id, editForm); toast.success('Updated'); setEditModal(false); load(); }
+    catch(err){ toast.error(err.response?.data?.message||'Failed'); }
+  };
+  const del = async (id) => { if(!confirm('Delete this payroll record?')) return; try { await payrollAPI.delete(id); toast.success('Deleted'); load(); } catch(e){ toast.error('Failed'); } };
+
+  const totalNet = payrolls.reduce((a,p)=>a+(p.netSalary||0),0);
+  const pending = payrolls.filter(p=>p.status==='Pending').length;
+  const paid = payrolls.filter(p=>p.status==='Paid').length;
+
+  if (loading) return <Loader/>;
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20, flexWrap:'wrap', gap:10 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Payroll Management</h2>
+      <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+        <input type="month" value={filterMonth} onChange={e=>setFilterMonth(e.target.value)} style={{ padding:'8px 12px', background:'#0c0f14', border:'1px solid #1e2533', borderRadius:8, color:'#e2e8f0', fontSize:12, outline:'none' }}/>
       </div>
     </div>
+
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:20 }}>
+      <StatCard icon={I.user} label="Staff" value={employees.length} color="#3b82f6"/>
+      <StatCard icon={I.money} label="Total Payroll" value={PKR(totalNet)} color="#10b981"/>
+      <StatCard icon={I.receipt} label="Pending" value={pending} color="#f59e0b"/>
+      <StatCard icon={I.check} label="Paid" value={paid} color="#10b981"/>
+    </div>
+
+    {/* Generate + Process actions */}
+    <div style={{ display:'flex', gap:10, marginBottom:18, padding:14, background:'#141820', borderRadius:12, border:'1px solid #1e2533', alignItems:'flex-end', flexWrap:'wrap' }}>
+      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+        <label style={{ fontSize:11, fontWeight:600, color:'#8892a4', textTransform:'uppercase', letterSpacing:0.5 }}>Generate For</label>
+        <input type="month" value={genMonth} onChange={e=>setGenMonth(e.target.value)} style={{ padding:'8px 12px', background:'#0c0f14', border:'1px solid #1e2533', borderRadius:8, color:'#e2e8f0', fontSize:12, outline:'none' }}/>
+      </div>
+      <Btn onClick={generate} icon={I.zap}>Generate Payroll</Btn>
+      {pending > 0 && <Btn onClick={processAll} variant="ghost" icon={I.check}>Process All ({pending})</Btn>}
+    </div>
+
+    <DataTable columns={[
+      { key:'employee', label:'Employee', render:v=><div><b>{v?.name||'—'}</b><div style={{fontSize:10,color:'#8892a4'}}>{v?.role} · {v?.shift}</div></div> },
+      { key:'basicSalary', label:'Basic', align:'right', render:v=>PKR(v) },
+      { key:'overtime', label:'OT', align:'right', render:v=>v?PKR(v):'—' },
+      { key:'bonus', label:'Bonus', align:'right', render:v=>v?PKR(v):'—' },
+      { key:'deductions', label:'Ded.', align:'right', render:v=>v?<span style={{color:'#ef4444'}}>{PKR(v)}</span>:'—' },
+      { key:'advance', label:'Adv.', align:'right', render:v=>v?<span style={{color:'#ef4444'}}>{PKR(v)}</span>:'—' },
+      { key:'eobi', label:'EOBI', align:'right', render:v=>v?PKR(v):'—' },
+      { key:'netSalary', label:'Net', align:'right', render:v=><b style={{color:'#10b981',fontFamily:"'JetBrains Mono',monospace"}}>{PKR(v)}</b> },
+      { key:'attendance', label:'Att.', render:v=><span style={{fontSize:11,color:'#8892a4'}}>{v?.present||30}/{v?.totalDays||30}</span> },
+      { key:'status', label:'Status', render:v=><Badge text={v} color={v==='Paid'?'#10b981':v==='Pending'?'#f59e0b':'#ef4444'}/> },
+      { key:'_', label:'', align:'center', render:(_,r)=><div style={{display:'flex',gap:4,justifyContent:'center'}}>
+        <button onClick={()=>openEdit(r)} style={{padding:'3px 8px',background:'#3b82f620',border:'1px solid #3b82f640',borderRadius:6,color:'#3b82f6',fontSize:11,cursor:'pointer'}}>Edit</button>
+        <button onClick={()=>del(r._id)} style={{padding:'3px 8px',background:'#ef444420',border:'1px solid #ef444440',borderRadius:6,color:'#ef4444',fontSize:11,cursor:'pointer'}}>Del</button>
+      </div>}
+    ]} data={payrolls}/>
+
+    <Modal isOpen={editModal} onClose={()=>setEditModal(false)} title={`Edit Payroll — ${editItem?.employee?.name||''}`}>
+      <form onSubmit={submitEdit}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Input label="Overtime (PKR)" type="number" value={editForm.overtime} onChange={v=>setEditForm(p=>({...p,overtime:Number(v)}))}/>
+          <Input label="Bonus (PKR)" type="number" value={editForm.bonus} onChange={v=>setEditForm(p=>({...p,bonus:Number(v)}))}/>
+          <Input label="Deductions" type="number" value={editForm.deductions} onChange={v=>setEditForm(p=>({...p,deductions:Number(v)}))}/>
+          <Input label="Advance" type="number" value={editForm.advance} onChange={v=>setEditForm(p=>({...p,advance:Number(v)}))}/>
+          <Input label="Loan Deduction" type="number" value={editForm.loanDeduction} onChange={v=>setEditForm(p=>({...p,loanDeduction:Number(v)}))}/>
+          <Select label="Status" value={editForm.status||'Pending'} onChange={v=>setEditForm(p=>({...p,status:v}))} options={['Pending','Processed','Paid','Cancelled'].map(s=>({value:s,label:s}))}/>
+          <Input label="Days Present" type="number" value={editForm.attendance?.present} onChange={v=>setEditForm(p=>({...p,attendance:{...p.attendance,present:Number(v)}}))}/>
+          <Input label="Days Absent" type="number" value={editForm.attendance?.absent} onChange={v=>setEditForm(p=>({...p,attendance:{...p.attendance,absent:Number(v)}}))}/>
+        </div>
+        <div style={{ display:'flex', gap:12, justifyContent:'flex-end', marginTop:20 }}>
+          <Btn variant="ghost" onClick={()=>setEditModal(false)}>Cancel</Btn>
+          <Btn type="submit">Update</Btn>
+        </div>
+      </form>
+    </Modal>
+  </div>;
+};
+
+// ─── DAILY CASH CLOSING PAGE ───
+const CashClosingPage = () => {
+  const [closings, setClosings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ date:today(), shift:'full', openingCash:0, cashSales:0, creditCollected:0, otherIncome:0, expenses:0, supplierPayments:0, salaryAdvances:0, otherPayments:0, actualCash:0, denominations:{ n5000:0, n1000:0, n500:0, n100:0, n50:0, n20:0, n10:0, coins:0 }, notes:'' });
+  const [showDenom, setShowDenom] = useState(false);
+
+  const load = () => { setLoading(true); cashClosingAPI.getAll({ startDate:daysAgo(30), endDate:today() }).then(r=>{setClosings(r.data.data); setLoading(false);}).catch(()=>setLoading(false)); };
+  useEffect(load, []);
+
+  const autoPopulate = async () => {
+    try {
+      const r = await cashClosingAPI.populate({ date: form.date, shift: form.shift });
+      const d = r.data.data;
+      setForm(p=>({ ...p, cashSales: d.cashSales, creditCollected: d.creditCollected, expenses: d.expenses, supplierPayments: d.supplierPayments, openingCash: d.openingCash }));
+      toast.success('Auto-populated from today\'s records');
+    } catch(e) { toast.error('Failed to populate'); }
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = { ...form, cashSales:Number(form.cashSales), creditCollected:Number(form.creditCollected), otherIncome:Number(form.otherIncome), expenses:Number(form.expenses), supplierPayments:Number(form.supplierPayments), salaryAdvances:Number(form.salaryAdvances), otherPayments:Number(form.otherPayments), actualCash:Number(form.actualCash), openingCash:Number(form.openingCash), status:'Closed' };
+      await cashClosingAPI.create(payload);
+      toast.success('Cash closing saved');
+      setModal(false);
+      setForm({ date:today(), shift:'full', openingCash:0, cashSales:0, creditCollected:0, otherIncome:0, expenses:0, supplierPayments:0, salaryAdvances:0, otherPayments:0, actualCash:0, denominations:{ n5000:0, n1000:0, n500:0, n100:0, n50:0, n20:0, n10:0, coins:0 }, notes:'' });
+      load();
+    } catch(err){ toast.error(err.response?.data?.message||'Failed'); }
+  };
+  const del = async (id) => { if(!confirm('Delete?')) return; try { await cashClosingAPI.delete(id); toast.success('Deleted'); load(); } catch(e){ toast.error('Failed'); } };
+
+  const totalIn = Number(form.cashSales||0) + Number(form.creditCollected||0) + Number(form.otherIncome||0);
+  const totalOut = Number(form.expenses||0) + Number(form.supplierPayments||0) + Number(form.salaryAdvances||0) + Number(form.otherPayments||0);
+  const expected = Number(form.openingCash||0) + totalIn - totalOut;
+  const diff = Number(form.actualCash||0) - expected;
+  const denomTotal = Object.entries(form.denominations||{}).reduce((sum,[k,v])=>{
+    const notes = { n5000:5000, n1000:1000, n500:500, n100:100, n50:50, n20:20, n10:10, coins:1 };
+    return sum + (notes[k]||0) * Number(v||0);
+  }, 0);
+
+  if (loading) return <Loader/>;
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Daily Cash Closing</h2>
+      <Btn icon={I.plus} onClick={()=>{ setModal(true); autoPopulate(); }}>New Closing</Btn>
+    </div>
+
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:20 }}>
+      <StatCard icon={I.wallet} label="Closings (30d)" value={closings.length} color="#3b82f6"/>
+      <StatCard icon={I.dollar} label="Last Expected" value={PKR(closings[0]?.expectedCash||0)} color="#10b981"/>
+      <StatCard icon={I.money} label="Last Actual" value={PKR(closings[0]?.actualCash||0)} color="#8b5cf6"/>
+      <StatCard icon={I.receipt} label="Last Difference" value={PKR(closings[0]?.difference||0)} color={closings[0]?.difference<0?'#ef4444':'#10b981'}/>
+    </div>
+
+    <DataTable columns={[
+      { key:'date', label:'Date', render:v=>fmtDate(v) },
+      { key:'shift', label:'Shift', render:v=><Badge text={v} color={v==='day'?'#f59e0b':v==='night'?'#06b6d4':'#8b5cf6'}/> },
+      { key:'openingCash', label:'Opening', align:'right', render:v=>PKR(v) },
+      { key:'totalCashIn', label:'Cash In', align:'right', render:v=><span style={{color:'#10b981',fontWeight:600}}>{PKR(v)}</span> },
+      { key:'totalCashOut', label:'Cash Out', align:'right', render:v=><span style={{color:'#ef4444',fontWeight:600}}>{PKR(v)}</span> },
+      { key:'expectedCash', label:'Expected', align:'right', render:v=><b>{PKR(v)}</b> },
+      { key:'actualCash', label:'Actual', align:'right', render:v=><b style={{fontFamily:"'JetBrains Mono',monospace"}}>{PKR(v)}</b> },
+      { key:'difference', label:'Diff', align:'right', render:v=><b style={{color:v<0?'#ef4444':v>0?'#10b981':'#8892a4',fontFamily:"'JetBrains Mono',monospace"}}>{v>0?'+':''}{PKR(v)}</b> },
+      { key:'status', label:'', render:v=><Badge text={v} color={v==='Closed'?'#10b981':'#f59e0b'}/> },
+      { key:'_', label:'', render:(_,r)=><button onClick={()=>del(r._id)} style={{padding:'3px 8px',background:'#ef444420',border:'1px solid #ef444440',borderRadius:6,color:'#ef4444',fontSize:11,cursor:'pointer'}}>Del</button>}
+    ]} data={closings}/>
+
+    <Modal isOpen={modal} onClose={()=>setModal(false)} title="Daily Cash Closing">
+      <form onSubmit={submit}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Input label="Date" type="date" value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} required/>
+          <Select label="Shift" value={form.shift} onChange={v=>setForm(p=>({...p,shift:v}))} options={[{value:'full',label:'Full Day'},{value:'day',label:'Day Shift'},{value:'night',label:'Night Shift'}]}/>
+          <Input label="Opening Cash" type="number" value={form.openingCash} onChange={v=>setForm(p=>({...p,openingCash:v}))}/>
+          <div/>
+          {/* Cash In */}
+          <div style={{ gridColumn:'1/-1', fontSize:12, fontWeight:700, color:'#10b981', textTransform:'uppercase', letterSpacing:1, borderTop:'1px solid #1e2533', paddingTop:10 }}>Cash Inflows</div>
+          <Input label="Cash Sales" type="number" value={form.cashSales} onChange={v=>setForm(p=>({...p,cashSales:v}))}/>
+          <Input label="Credit Collected (Cash)" type="number" value={form.creditCollected} onChange={v=>setForm(p=>({...p,creditCollected:v}))}/>
+          <Input label="Other Income" type="number" value={form.otherIncome} onChange={v=>setForm(p=>({...p,otherIncome:v}))}/>
+          <Input label="Total Cash In" value={PKR(totalIn)} onChange={()=>{}}/>
+          {/* Cash Out */}
+          <div style={{ gridColumn:'1/-1', fontSize:12, fontWeight:700, color:'#ef4444', textTransform:'uppercase', letterSpacing:1, borderTop:'1px solid #1e2533', paddingTop:10 }}>Cash Outflows</div>
+          <Input label="Expenses" type="number" value={form.expenses} onChange={v=>setForm(p=>({...p,expenses:v}))}/>
+          <Input label="Supplier Payments" type="number" value={form.supplierPayments} onChange={v=>setForm(p=>({...p,supplierPayments:v}))}/>
+          <Input label="Salary Advances" type="number" value={form.salaryAdvances} onChange={v=>setForm(p=>({...p,salaryAdvances:v}))}/>
+          <Input label="Other Payments" type="number" value={form.otherPayments} onChange={v=>setForm(p=>({...p,otherPayments:v}))}/>
+          {/* Reconciliation */}
+          <div style={{ gridColumn:'1/-1', fontSize:12, fontWeight:700, color:'#8b5cf6', textTransform:'uppercase', letterSpacing:1, borderTop:'1px solid #1e2533', paddingTop:10 }}>Reconciliation</div>
+          <Input label="Expected Cash" value={PKR(expected)} onChange={()=>{}}/>
+          <Input label="Actual Cash Counted" type="number" value={form.actualCash} onChange={v=>setForm(p=>({...p,actualCash:v}))} required/>
+        </div>
+
+        {/* Difference display */}
+        <div style={{ marginTop:12, padding:14, background:diff>=0?'#10b98112':'#ef444412', borderRadius:10, textAlign:'center' }}>
+          <div style={{ fontSize:11, color:'#8892a4', textTransform:'uppercase', letterSpacing:1 }}>Difference (Actual − Expected)</div>
+          <div style={{ fontSize:22, fontWeight:800, color:diff<0?'#ef4444':diff>0?'#10b981':'#8892a4', fontFamily:"'JetBrains Mono',monospace" }}>{diff>0?'+':''}{PKR(diff)}</div>
+        </div>
+
+        {/* Denomination counter toggle */}
+        <button type="button" onClick={()=>setShowDenom(!showDenom)} style={{ marginTop:12, padding:'6px 12px', background:'#1e253320', border:'1px solid #1e2533', borderRadius:6, color:'#8892a4', fontSize:11, cursor:'pointer', width:'100%', textAlign:'center' }}>{showDenom?'Hide':'Show'} Denomination Counter</button>
+        {showDenom && <div style={{ marginTop:10, display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
+          {[['n5000','5000'],['n1000','1000'],['n500','500'],['n100','100'],['n50','50'],['n20','20'],['n10','10'],['coins','Coins']].map(([k,label])=>
+            <div key={k}>
+              <label style={{ fontSize:10, color:'#8892a4', fontWeight:600 }}>Rs. {label}</label>
+              <input type="number" value={form.denominations[k]||0} onChange={e=>setForm(p=>({...p,denominations:{...p.denominations,[k]:Number(e.target.value)}}))} style={{ width:'100%', padding:'6px 8px', background:'#0c0f14', border:'1px solid #1e2533', borderRadius:6, color:'#e2e8f0', fontSize:12, outline:'none', boxSizing:'border-box' }}/>
+            </div>
+          )}
+          <div style={{ gridColumn:'1/-1', textAlign:'right', fontSize:12, color:'#8892a4' }}>Denomination Total: <b style={{ color:'#e2e8f0' }}>{PKR(denomTotal)}</b></div>
+        </div>}
+
+        <div style={{ display:'flex', gap:12, justifyContent:'flex-end', marginTop:16 }}>
+          <Btn variant="ghost" onClick={()=>setModal(false)}>Cancel</Btn>
+          <Btn type="submit">Save Closing</Btn>
+        </div>
+      </form>
+    </Modal>
   </div>;
 };
 
@@ -1624,10 +2214,13 @@ const NAV = [
   { id:'stock', label:'Stock', icon:I.box },
   { id:'pumps', label:'Pumps & Tanks', icon:I.pump },
   { id:'credit', label:'Credit / Payments', icon:I.card },
+  { id:'supplierPay', label:'Supplier Payments', icon:I.money },
   { id:'suppliers', label:'Suppliers', icon:I.truck },
   { id:'customers', label:'Customers', icon:I.users },
   { id:'employees', label:'Employees', icon:I.user },
+  { id:'payroll', label:'Payroll', icon:I.wallet },
   { id:'expenses', label:'Expenses', icon:I.receipt },
+  { id:'cashClosing', label:'Cash Closing', icon:I.money },
   { id:'history', label:'History', icon:I.history },
   { id:'reports', label:'Reports', icon:I.chart },
   { id:'settings', label:'Settings', icon:I.settings },
@@ -1642,10 +2235,13 @@ const PAGES = {
   stock:StockPage,
   pumps:PumpsPage,
   credit:CreditPage,
+  supplierPay:SupplierPaymentsPage,
   suppliers:SuppliersPage,
   customers:CustomersPage,
   employees:EmployeesPage,
+  payroll:PayrollPage,
   expenses:ExpensesPage,
+  cashClosing:CashClosingPage,
   history:HistoryPage,
   reports:ReportsPage,
   settings:SettingsPage,
@@ -1656,6 +2252,20 @@ const AppLayout = () => {
   const [page, setPage] = useState('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [publicView, setPublicView] = useState('landing'); // 'landing' | 'login'
+  const [alerts, setAlerts] = useState([]);
+  const [showAlerts, setShowAlerts] = useState(false);
+
+  // Fetch alerts periodically
+  useEffect(() => {
+    if (!user) return;
+    const fetchAlerts = () => {
+      dashboardAPI.get().then(r => setAlerts(r.data.data?.alerts || [])).catch(() => {});
+    };
+    fetchAlerts();
+    const interval = setInterval(fetchAlerts, 120000); // every 2 min
+    return () => clearInterval(interval);
+  }, [user]);
+
   if (loading) return <Loader/>;
   if (!user) {
     if (publicView === 'login') return <LoginPage onBack={()=>setPublicView('landing')}/>;
@@ -1668,6 +2278,7 @@ const AppLayout = () => {
     />;
   }
   const Page = PAGES[page] || DashboardPage;
+  const pageProps = page === 'dashboard' ? { onNavigate: setPage } : {};
   return <div style={{ display:'flex', minHeight:'100vh', background:'#0c0f14', fontFamily:"'Outfit',-apple-system,sans-serif", color:'#e2e8f0' }}>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet"/>
     <aside style={{ width:collapsed?72:250, background:'#0a0d12', borderRight:'1px solid #1e2533', display:'flex', flexDirection:'column', transition:'width 0.25s', overflow:'hidden', flexShrink:0, position:'sticky', top:0, height:'100vh' }}>
@@ -1695,10 +2306,35 @@ const AppLayout = () => {
     <main style={{ flex:1, display:'flex', flexDirection:'column', minWidth:0 }}>
       <header style={{ padding:'14px 28px', borderBottom:'1px solid #1e2533', background:'#0a0d12', display:'flex', alignItems:'center', justifyContent:'space-between', position:'sticky', top:0, zIndex:10 }}>
         <button onClick={()=>setCollapsed(!collapsed)} style={{ background:'none', border:'none', color:'#8892a4', cursor:'pointer' }}><div style={{ width:22, height:22 }}>{I.menu}</div></button>
-        <div style={{ fontSize:12, color:'#8892a4' }}>{new Date().toLocaleDateString('en-PK',{weekday:'long',day:'2-digit',month:'short',year:'numeric'})}</div>
+        <div style={{ display:'flex', alignItems:'center', gap:16 }}>
+          {/* Notification Bell */}
+          <div style={{ position:'relative' }}>
+            <button onClick={()=>setShowAlerts(!showAlerts)} style={{ background:'none', border:'none', color:alerts.length>0?'#f59e0b':'#8892a4', cursor:'pointer', position:'relative' }}>
+              <div style={{ width:20, height:20 }}>{I.bell}</div>
+              {alerts.length>0 && <span style={{ position:'absolute', top:-4, right:-4, width:16, height:16, borderRadius:'50%', background:'#ef4444', color:'#fff', fontSize:9, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center' }}>{alerts.length}</span>}
+            </button>
+            {showAlerts && <div style={{ position:'absolute', top:'100%', right:0, marginTop:8, width:340, maxHeight:400, overflow:'auto', background:'#141820', border:'1px solid #1e2533', borderRadius:12, boxShadow:'0 20px 40px rgba(0,0,0,0.5)', zIndex:100 }}>
+              <div style={{ padding:'12px 16px', borderBottom:'1px solid #1e2533', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span style={{ fontSize:13, fontWeight:700, color:'#e2e8f0' }}>Alerts</span>
+                <span style={{ fontSize:11, color:'#8892a4' }}>{alerts.length} active</span>
+              </div>
+              {alerts.length === 0 && <div style={{ padding:24, textAlign:'center', color:'#4a5568', fontSize:12 }}>No alerts — everything looks good!</div>}
+              {alerts.map((a,i)=><div key={i} style={{ padding:'10px 16px', borderBottom:'1px solid #1e2533', display:'flex', alignItems:'flex-start', gap:10 }}>
+                <div style={{ width:14, height:14, flexShrink:0, marginTop:1, color:a.severity==='critical'?'#ef4444':'#f59e0b' }}>{I.warn}</div>
+                <div>
+                  <div style={{ fontSize:12, color:'#e2e8f0', fontWeight:500 }}>{a.message}</div>
+                  <div style={{ fontSize:10, color:'#4a5568', marginTop:2, textTransform:'capitalize' }}>{a.type.replace(/_/g,' ')}</div>
+                </div>
+              </div>)}
+            </div>}
+          </div>
+          <div style={{ fontSize:12, color:'#8892a4' }}>{new Date().toLocaleDateString('en-PK',{weekday:'long',day:'2-digit',month:'short',year:'numeric'})}</div>
+        </div>
       </header>
-      <div style={{ flex:1, padding:28, overflow:'auto' }}><Page/></div>
+      <div style={{ flex:1, padding:28, overflow:'auto' }}><Page {...pageProps}/></div>
     </main>
+    {/* Click outside to close alerts */}
+    {showAlerts && <div onClick={()=>setShowAlerts(false)} style={{ position:'fixed', inset:0, zIndex:9 }}/>}
   </div>;
 };
 

@@ -4,6 +4,7 @@ const reading = require('../controllers/readingController');
 const dip = require('../controllers/dipController');
 const payment = require('../controllers/paymentController');
 const history = require('../controllers/historyController');
+const cashClosing = require('../controllers/cashClosingController');
 const createCrudController = require('../controllers/crudFactory');
 const Pump = require('../models/Pump');
 
@@ -34,5 +35,10 @@ router.route('/pumps/:id').get(pumpCtrl.getOne).put(authorize('owner', 'manager'
 // ─── Unified history feed and stock ledger ───
 router.get('/history', history.feed);
 router.get('/stock-movements', history.stockMovements);
+
+// ─── Daily Cash Closing ───
+router.get('/cash-closing/populate', cashClosing.populateDay);
+router.route('/cash-closing').get(cashClosing.getCashClosings).post(cashClosing.createCashClosing);
+router.route('/cash-closing/:id').put(cashClosing.updateCashClosing).delete(authorize('owner', 'manager'), cashClosing.deleteCashClosing);
 
 module.exports = router;
