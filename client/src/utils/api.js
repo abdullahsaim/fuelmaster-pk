@@ -31,6 +31,7 @@ export const authAPI = {
 export const dashboardAPI = {
   get: () => api.get('/dashboard'),
   getPnL: (params) => api.get('/dashboard/pnl', { params }),
+  getPerformance: (params) => api.get('/dashboard/performance', { params }),
 };
 
 export const salesAPI = {
@@ -125,6 +126,28 @@ export const cashClosingAPI = {
   create: (data) => api.post('/cash-closing', data),
   update: (id, data) => api.put(`/cash-closing/${id}`, data),
   delete: (id) => api.delete(`/cash-closing/${id}`),
+};
+export const shiftHandoverAPI = {
+  getAll: (params) => api.get('/shift-handovers', { params }),
+  populate: (params) => api.get('/shift-handovers/populate', { params }),
+  create: (data) => api.post('/shift-handovers', data),
+  acknowledge: (id, data) => api.put(`/shift-handovers/${id}/acknowledge`, data),
+  delete: (id) => api.delete(`/shift-handovers/${id}`),
+};
+export const attendanceAPI = {
+  getAll: (params) => api.get('/attendance', { params }),
+  bulkMark: (data) => api.post('/attendance/bulk', data),
+  summary: (params) => api.get('/attendance/summary', { params }),
+  delete: (id) => api.delete(`/attendance/${id}`),
+};
+export const tankTransferAPI = {
+  transfer: (data) => api.post('/tank-transfer', data),
+};
+export const checklistAPI = {
+  getAll: (params) => api.get('/checklists', { params }),
+  create: (data) => api.post('/checklists', data),
+  update: (id, data) => api.put(`/checklists/${id}`, data),
+  delete: (id) => api.delete(`/checklists/${id}`),
 };
 
 export default api;

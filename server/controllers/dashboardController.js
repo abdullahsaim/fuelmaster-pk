@@ -157,6 +157,83 @@ exports.getDashboard = async (req, res) => {
   }
 };
 
+// @desc    Employee performance metrics
+// @route   GET /api/dashboard/performance
+exports.getPerformance = async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    const Reading = require('../models/Reading');
+    const Attendance = require('../models/Attendance');
+    const Employee = require('../models/Employee');
+
+    const dateFilter = {};
+    if (startDate) dateFilter.$gte = new Date(startDate);
+    if (endDate) dateFilter.$lte = new Date(endDate + 'T23:59:59');
+    const match = Object.keys(dateFilter).length ? { date: dateFilter } : {};
+
+    const employees = await Employee.find({ status: 'Active' }).select('name role shift salary');
+
+    // Readings per operator
+    const readingsByOp = await Reading.aggregate([
+      { $match: match },
+      { $group: {
+        _id: '$operator',
+        shifts: { $sum: 1 },
+        totalDispensed: { $sum: '$dispensed' },
+        totalAmount: { $sum: '$amount' },
+        totalShortExcess: { $sum: '$shortExcess' },
+        avgDispensed: { $avg: '$dispensed' },
+      }},
+    ]);
+
+    // Sales per nozzle operator (from readings, not direct sales)
+    const salesByShift = await Sale.aggregate([
+      { $match: match },
+      { $group: {
+        _id: '$shift',
+        totalAmount: { $sum: '$amount' },
+        totalQty: { $sum: '$quantity' },
+        count: { $sum: 1 },
+      }},
+    ]);
+
+    // Attendance summary
+    const attendanceSummary = await Attendance.aggregate([
+      { $match: match },
+      { $group: {
+        _id: '$employee',
+        totalDays: { $sum: 1 },
+        present: { $sum: { $cond: [{ $eq: ['$status', 'Present'] }, 1, 0] } },
+        late: { $sum: { $cond: [{ $eq: ['$status', 'Late'] }, 1, 0] } },
+        absent: { $sum: { $cond: [{ $eq: ['$status', 'Absent'] }, 1, 0] } },
+        overtime: { $sum: '$overtimeHours' },
+      }},
+    ]);
+
+    const performance = employees.map(emp => {
+      const reading = readingsByOp.find(r => r._id?.toString() === emp._id.toString()) || {};
+      const att = attendanceSummary.find(a => a._id?.toString() === emp._id.toString()) || {};
+      return {
+        employee: emp,
+        shifts: reading.shifts || 0,
+        dispensed: reading.totalDispensed || 0,
+        salesAmount: reading.totalAmount || 0,
+        shortExcess: reading.totalShortExcess || 0,
+        avgDispensed: Math.round(reading.avgDispensed || 0),
+        present: att.present || 0,
+        late: att.late || 0,
+        absent: att.absent || 0,
+        overtime: att.overtime || 0,
+        attendancePct: att.totalDays > 0 ? Math.round((att.present + att.late) / att.totalDays * 100) : 0,
+      };
+    });
+
+    res.json({ success: true, data: { performance, salesByShift } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // @desc    Get P&L report
 // @route   GET /api/dashboard/pnl
 exports.getPnL = async (req, res) => {

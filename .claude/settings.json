@@ -3,7 +3,12 @@
     "allow": [
       "Bash(node -c client/src/utils/api.js)",
       "Bash(node -e \"try { require\\('./server/models/CashClosing'\\); require\\('./server/controllers/cashClosingController'\\); console.log\\('Require test OK'\\); } catch\\(e\\) { console.error\\(e.message\\); }\")",
-      "Bash(node -e ':*)"
+      "Bash(node -e ':*)",
+      "Bash(node -c server/models/ShiftHandover.js)",
+      "Bash(node -c server/models/Attendance.js)",
+      "Bash(node -c server/models/Checklist.js)",
+      "Bash(node -c server/controllers/shiftHandoverController.js)",
+      "Bash(node -c server/controllers/attendanceController.js)"
     ]
   }
 }

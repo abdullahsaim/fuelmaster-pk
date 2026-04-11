@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
-import { dashboardAPI, salesAPI, purchasesAPI, suppliersAPI, customersAPI, employeesAPI, expensesAPI, payrollAPI, tanksAPI, nozzlesAPI, productsAPI, fuelTypesAPI, settingsAPI, readingsAPI, dipsAPI, creditPaymentsAPI, supplierPaymentsAPI, pumpsAPI, historyAPI, reportsAPI, cashClosingAPI } from './utils/api.js';
+import { dashboardAPI, salesAPI, purchasesAPI, suppliersAPI, customersAPI, employeesAPI, expensesAPI, payrollAPI, tanksAPI, nozzlesAPI, productsAPI, fuelTypesAPI, settingsAPI, readingsAPI, dipsAPI, creditPaymentsAPI, supplierPaymentsAPI, pumpsAPI, historyAPI, reportsAPI, cashClosingAPI, shiftHandoverAPI, attendanceAPI, tankTransferAPI, checklistAPI } from './utils/api.js';
 import { PKR, fmtDate, daysAgo, today } from './utils/helpers.js';
 
 // ─── ICONS (inline SVG) ───
@@ -33,6 +33,11 @@ const I = {
   warn: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
   check: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>,
   zap: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+  swap: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>,
+  clipboard: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>,
+  handshake: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20.42 4.58a5.4 5.4 0 00-7.65 0l-.77.78-.77-.78a5.4 5.4 0 00-7.65 0C1.46 6.7 1.33 10.28 4 13l8 8 8-8c2.67-2.72 2.54-6.3.42-8.42z"/></svg>,
+  target: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>,
+  clock: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
 };
 
 // ─── SHARED UI ───
@@ -138,7 +143,7 @@ const LandingPage = ({ onLogin, onDemo }) => {
 
   const stats = [
     { value: '13+', label: 'Report Types' },
-    { value: '18',  label: 'Modules' },
+    { value: '24',  label: 'Modules' },
     { value: '100%',label: 'Pakistan-Ready' },
     { value: 'PKR', label: 'OGRA Rates' },
   ];
@@ -2204,23 +2209,596 @@ const CashClosingPage = () => {
   </div>;
 };
 
+// ─── SHIFT HANDOVER PAGE ───
+const ShiftHandoverPage = () => {
+  const [handovers, setHandovers] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [form, setForm] = useState({ date:today(), shift:'day', outgoingOperator:'', cashInHand:0, pendingItems:[''], remarks:'' });
+  const [autoData, setAutoData] = useState(null);
+
+  const load = () => { setLoading(true); Promise.all([shiftHandoverAPI.getAll({ startDate:daysAgo(14), endDate:today() }), employeesAPI.getAll()]).then(([h,e])=>{ setHandovers(h.data.data); setEmployees(e.data.data); setLoading(false); }).catch(()=>setLoading(false)); };
+  useEffect(load, []);
+
+  const autoPopulate = async () => {
+    try {
+      const r = await shiftHandoverAPI.populate({ date: form.date, shift: form.shift });
+      setAutoData(r.data.data);
+      setForm(p=>({ ...p, cashInHand: r.data.data.totalCashSales - r.data.data.expenses }));
+      toast.success('Shift data loaded');
+    } catch(e) { toast.error('Failed to auto-populate'); }
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    try {
+      const payload = {
+        ...form, cashInHand:Number(form.cashInHand), status:'Submitted',
+        totalSales: autoData?.totalSales||0, totalCashSales: autoData?.totalCashSales||0,
+        totalCreditSales: autoData?.totalCreditSales||0, expenses: autoData?.expenses||0,
+        shortExcess: autoData?.shortExcess||0, meterReadings: autoData?.meterReadings||[],
+        tankLevels: autoData?.tankLevels||[],
+        pendingItems: form.pendingItems.filter(p=>p.trim()),
+      };
+      await shiftHandoverAPI.create(payload);
+      toast.success('Shift handover submitted'); setModal(false); load();
+    } catch(err){ toast.error(err.response?.data?.message||'Failed'); }
+  };
+
+  const ack = async (id) => {
+    const incoming = prompt('Enter incoming operator employee ID or leave blank:');
+    try { await shiftHandoverAPI.acknowledge(id, { incomingOperator: incoming || undefined }); toast.success('Acknowledged'); load(); }
+    catch(e){ toast.error('Failed'); }
+  };
+  const del = async (id) => { if(!confirm('Delete?')) return; try { await shiftHandoverAPI.delete(id); toast.success('Deleted'); load(); } catch(e){ toast.error('Failed'); } };
+
+  if (loading) return <Loader/>;
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Shift Handover</h2>
+      <Btn icon={I.plus} onClick={()=>{ setModal(true); setAutoData(null); }}>New Handover</Btn>
+    </div>
+
+    <DataTable columns={[
+      { key:'date', label:'Date', render:v=>fmtDate(v) },
+      { key:'shift', label:'Shift', render:v=><Badge text={v} color={v==='day'?'#f59e0b':'#06b6d4'}/> },
+      { key:'outgoingOperator', label:'Outgoing', render:v=>v?.name||'—' },
+      { key:'incomingOperator', label:'Incoming', render:v=>v?.name||'Pending' },
+      { key:'totalSales', label:'Sales', align:'right', render:v=>PKR(v) },
+      { key:'cashInHand', label:'Cash', align:'right', render:v=><b style={{color:'#10b981',fontFamily:"'JetBrains Mono',monospace"}}>{PKR(v)}</b> },
+      { key:'shortExcess', label:'S/E', align:'right', render:v=><span style={{color:v<0?'#ef4444':'#10b981'}}>{PKR(v)}</span> },
+      { key:'status', label:'Status', render:v=><Badge text={v} color={v==='Acknowledged'?'#10b981':v==='Submitted'?'#3b82f6':'#8892a4'}/> },
+      { key:'_', label:'', align:'center', render:(_,r)=><div style={{display:'flex',gap:4,justifyContent:'center'}}>
+        {r.status==='Submitted' && <button onClick={()=>ack(r._id)} style={{padding:'3px 8px',background:'#10b98120',border:'1px solid #10b98140',borderRadius:6,color:'#10b981',fontSize:11,cursor:'pointer'}}>Ack</button>}
+        <button onClick={()=>del(r._id)} style={{padding:'3px 8px',background:'#ef444420',border:'1px solid #ef444440',borderRadius:6,color:'#ef4444',fontSize:11,cursor:'pointer'}}>Del</button>
+      </div>}
+    ]} data={handovers}/>
+
+    <Modal isOpen={modal} onClose={()=>setModal(false)} title="Shift Handover Form">
+      <form onSubmit={submit}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Input label="Date" type="date" value={form.date} onChange={v=>setForm(p=>({...p,date:v}))} required/>
+          <Select label="Shift" value={form.shift} onChange={v=>setForm(p=>({...p,shift:v}))} options={[{value:'day',label:'Day'},{value:'night',label:'Night'}]}/>
+          <Select label="Outgoing Operator" value={form.outgoingOperator} onChange={v=>setForm(p=>({...p,outgoingOperator:v}))} options={[{value:'',label:'Select...'},...employees.map(e=>({value:e._id,label:`${e.name} (${e.role})`}))]}/>
+          <div style={{display:'flex',alignItems:'flex-end'}}>
+            <button type="button" onClick={autoPopulate} style={{ padding:'10px 16px', background:'#3b82f620', border:'1px solid #3b82f640', borderRadius:8, color:'#3b82f6', fontSize:12, fontWeight:600, cursor:'pointer', width:'100%' }}>Auto-Populate Shift Data</button>
+          </div>
+        </div>
+
+        {autoData && <div style={{ marginTop:14, padding:14, background:'#0c0f14', borderRadius:10, border:'1px solid #1e2533' }}>
+          <div style={{ fontSize:12, fontWeight:700, color:'#e2e8f0', marginBottom:8 }}>Shift Summary (Auto)</div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, fontSize:12 }}>
+            <div><span style={{color:'#8892a4'}}>Cash Sales:</span> <b style={{color:'#10b981'}}>{PKR(autoData.totalCashSales)}</b></div>
+            <div><span style={{color:'#8892a4'}}>Credit Sales:</span> <b style={{color:'#f59e0b'}}>{PKR(autoData.totalCreditSales)}</b></div>
+            <div><span style={{color:'#8892a4'}}>Expenses:</span> <b style={{color:'#ef4444'}}>{PKR(autoData.expenses)}</b></div>
+            <div><span style={{color:'#8892a4'}}>Total Sales:</span> <b>{PKR(autoData.totalSales)}</b></div>
+            <div><span style={{color:'#8892a4'}}>Short/Excess:</span> <b style={{color:autoData.shortExcess<0?'#ef4444':'#10b981'}}>{PKR(autoData.shortExcess)}</b></div>
+          </div>
+          {autoData.tankLevels?.length>0 && <div style={{ marginTop:8, fontSize:11, color:'#8892a4' }}>Tanks: {autoData.tankLevels.map(t=>`${t.tankName}: ${t.level?.toLocaleString()}L`).join(' · ')}</div>}
+        </div>}
+
+        <div style={{ marginTop:14, display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Input label="Cash in Hand (PKR)" type="number" value={form.cashInHand} onChange={v=>setForm(p=>({...p,cashInHand:v}))} required/>
+          <Input label="Remarks" value={form.remarks} onChange={v=>setForm(p=>({...p,remarks:v}))}/>
+        </div>
+
+        <div style={{ marginTop:14 }}>
+          <label style={{ fontSize:11, fontWeight:600, color:'#8892a4', textTransform:'uppercase', letterSpacing:0.5 }}>Pending Items for Next Shift</label>
+          {form.pendingItems.map((item,i)=><div key={i} style={{ display:'flex', gap:6, marginTop:6 }}>
+            <input value={item} onChange={e=>{ const arr=[...form.pendingItems]; arr[i]=e.target.value; setForm(p=>({...p,pendingItems:arr})); }}
+              style={{ flex:1, padding:'8px 12px', background:'#0c0f14', border:'1px solid #1e2533', borderRadius:6, color:'#e2e8f0', fontSize:12, outline:'none' }} placeholder={`Item ${i+1}`}/>
+            {i===form.pendingItems.length-1 && <button type="button" onClick={()=>setForm(p=>({...p,pendingItems:[...p.pendingItems,'']}))} style={{ padding:'6px 10px', background:'#1e2533', border:'none', borderRadius:6, color:'#8892a4', cursor:'pointer', fontSize:14 }}>+</button>}
+          </div>)}
+        </div>
+
+        <div style={{ display:'flex', gap:12, justifyContent:'flex-end', marginTop:20 }}>
+          <Btn variant="ghost" onClick={()=>setModal(false)}>Cancel</Btn>
+          <Btn type="submit">Submit Handover</Btn>
+        </div>
+      </form>
+    </Modal>
+  </div>;
+};
+
+// ─── QUICK SALE MODE (POS) ───
+const QuickSalePage = () => {
+  const [fuelTypes, setFuelTypes] = useState([]);
+  const [tanks, setTanks] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [qty, setQty] = useState('');
+  const [saleType, setSaleType] = useState('cash');
+  const [customer, setCustomer] = useState('');
+  const [vehicleNumber, setVehicleNumber] = useState('');
+  const [shift, setShift] = useState(new Date().getHours() < 18 ? 'day' : 'night');
+  const [recentSales, setRecentSales] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    Promise.all([fuelTypesAPI.getAll(), tanksAPI.getAll(), customersAPI.getAll()])
+      .then(([f,t,c])=>{ setFuelTypes(f.data.data.filter(x=>x.isActive)); setTanks(t.data.data); setCustomers(c.data.data); });
+    salesAPI.getAll({ startDate:today(), endDate:today() }).then(r=>setRecentSales(r.data.data));
+  }, []);
+
+  const submit = async () => {
+    if (!selected || !qty) return toast.error('Select fuel and enter quantity');
+    setSubmitting(true);
+    try {
+      const tank = tanks.find(t=>(t.fuelType?._id||t.fuelType)===selected._id);
+      const payload = { shift, saleType, fuelType:selected._id, tank:tank?._id, quantity:Number(qty), rate:selected.currentRate };
+      if (saleType==='credit') { payload.customer = customer; payload.vehicleNumber = vehicleNumber; }
+      await salesAPI.create(payload);
+      toast.success(`${qty}L ${selected.name} — ${PKR(Number(qty)*selected.currentRate)}`);
+      setQty(''); setVehicleNumber('');
+      salesAPI.getAll({ startDate:today(), endDate:today() }).then(r=>setRecentSales(r.data.data));
+    } catch(err) { toast.error(err.response?.data?.message||'Sale failed'); }
+    setSubmitting(false);
+  };
+
+  const todayTotal = recentSales.reduce((a,s)=>a+(s.amount||0),0);
+  const todayQty = recentSales.reduce((a,s)=>a+(s.quantity||0),0);
+
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+      <div>
+        <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:'0 0 2px' }}>Quick Sale (POS)</h2>
+        <p style={{ fontSize:12, color:'#8892a4', margin:0 }}>Fast sale entry — select fuel, enter qty, done.</p>
+      </div>
+      <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+        <div style={{ fontSize:12, color:'#8892a4' }}>Today: <b style={{color:'#10b981'}}>{PKR(todayTotal)}</b> · {todayQty.toLocaleString()}L · {recentSales.length} sales</div>
+        <Select value={shift} onChange={setShift} options={[{value:'day',label:'Day Shift'},{value:'night',label:'Night Shift'}]}/>
+      </div>
+    </div>
+
+    {/* Fuel Buttons */}
+    <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.min(fuelTypes.length,4)},1fr)`, gap:14, marginBottom:24 }}>
+      {fuelTypes.map(f=>(
+        <button key={f._id} onClick={()=>setSelected(f)} style={{
+          padding:24, borderRadius:16, cursor:'pointer', border:`2px solid ${selected?._id===f._id?f.color:'#1e2533'}`,
+          background:selected?._id===f._id?`${f.color}18`:'#141820', textAlign:'center', transition:'all 0.2s',
+        }}>
+          <div style={{ width:12, height:12, borderRadius:'50%', background:f.color, margin:'0 auto 10px', boxShadow:`0 0 16px ${f.color}60` }}/>
+          <div style={{ fontSize:18, fontWeight:800, color:selected?._id===f._id?f.color:'#e2e8f0' }}>{f.name}</div>
+          <div style={{ fontSize:22, fontWeight:800, color:f.color, fontFamily:"'JetBrains Mono',monospace", marginTop:8 }}>{PKR(f.currentRate)}</div>
+          <div style={{ fontSize:11, color:'#8892a4', marginTop:2 }}>per {f.unit}</div>
+        </button>
+      ))}
+    </div>
+
+    {/* Quantity + Sale Type */}
+    {selected && <div style={{ background:'#141820', borderRadius:16, padding:24, border:'1px solid #1e2533', marginBottom:20 }}>
+      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr 1fr', gap:16, alignItems:'flex-end' }}>
+        <div>
+          <label style={{ fontSize:11, fontWeight:600, color:'#8892a4', textTransform:'uppercase', letterSpacing:0.5, display:'block', marginBottom:6 }}>Quantity (Litres)</label>
+          <input type="number" value={qty} onChange={e=>setQty(e.target.value)} autoFocus placeholder="Enter litres..."
+            style={{ width:'100%', padding:'16px 20px', background:'#0c0f14', border:`2px solid ${selected.color}40`, borderRadius:12, color:'#e2e8f0', fontSize:28, fontWeight:800, fontFamily:"'JetBrains Mono',monospace", outline:'none', boxSizing:'border-box', textAlign:'center' }}/>
+        </div>
+        <div>
+          <label style={{ fontSize:11, fontWeight:600, color:'#8892a4', textTransform:'uppercase', letterSpacing:0.5, display:'block', marginBottom:6 }}>Sale Type</label>
+          <div style={{ display:'flex', gap:6 }}>
+            {['cash','credit'].map(t=><button key={t} onClick={()=>setSaleType(t)} style={{ flex:1, padding:12, borderRadius:8, border:`1px solid ${saleType===t?(t==='cash'?'#10b981':'#f59e0b'):'#1e2533'}`, background:saleType===t?(t==='cash'?'#10b98118':'#f59e0b18'):'#0c0f14', color:saleType===t?(t==='cash'?'#10b981':'#f59e0b'):'#8892a4', fontSize:14, fontWeight:700, cursor:'pointer', textTransform:'capitalize' }}>{t}</button>)}
+          </div>
+        </div>
+        <div style={{ textAlign:'center' }}>
+          <label style={{ fontSize:11, fontWeight:600, color:'#8892a4', textTransform:'uppercase', letterSpacing:0.5, display:'block', marginBottom:6 }}>Total</label>
+          <div style={{ fontSize:28, fontWeight:800, color:selected.color, fontFamily:"'JetBrains Mono',monospace" }}>{qty ? PKR(Number(qty)*selected.currentRate) : '—'}</div>
+        </div>
+      </div>
+
+      {saleType==='credit' && <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginTop:14 }}>
+        <Select label="Customer" value={customer} onChange={setCustomer} options={[{value:'',label:'Select...'},...customers.map(c=>({value:c._id,label:`${c.name} (${PKR(c.balance)})`}))]}/>
+        <Input label="Vehicle #" value={vehicleNumber} onChange={setVehicleNumber} placeholder="LHR-1234"/>
+      </div>}
+
+      <button onClick={submit} disabled={submitting||!qty} style={{ marginTop:18, width:'100%', padding:18, background:selected.color, color:'#fff', border:'none', borderRadius:12, fontSize:18, fontWeight:800, cursor:submitting?'wait':'pointer', opacity:!qty?0.5:1, display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
+        <div style={{ width:22, height:22 }}>{I.zap}</div>
+        {submitting ? 'Recording...' : `Record ${qty||0}L ${selected.name} — ${qty ? PKR(Number(qty)*selected.currentRate) : ''}`}
+      </button>
+    </div>}
+
+    {/* Recent sales ticker */}
+    <div style={{ fontSize:14, fontWeight:700, color:'#e2e8f0', marginBottom:10 }}>Recent Sales Today</div>
+    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+      {recentSales.slice(0,8).map(s=><div key={s._id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px', background:'#141820', border:'1px solid #1e2533', borderRadius:10 }}>
+        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+          <Badge text={s.fuelType?.name||'—'} color={s.fuelType?.color||'#8892a4'}/>
+          <span style={{ fontSize:13, color:'#e2e8f0' }}>{s.quantity}L</span>
+          <Badge text={s.saleType} color={s.saleType==='cash'?'#10b981':'#f59e0b'}/>
+          {s.customer?.name && <span style={{fontSize:11,color:'#8892a4'}}>{s.customer.name}</span>}
+        </div>
+        <span style={{ fontFamily:"'JetBrains Mono',monospace", fontWeight:700, color:'#10b981', fontSize:14 }}>{PKR(s.amount)}</span>
+      </div>)}
+      {!recentSales.length && <div style={{ padding:24, textAlign:'center', color:'#4a5568', fontSize:12 }}>No sales today yet</div>}
+    </div>
+  </div>;
+};
+
+// ─── ATTENDANCE PAGE ───
+const AttendancePage = () => {
+  const [employees, setEmployees] = useState([]);
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [date, setDate] = useState(today());
+  const [tab, setTab] = useState('mark');
+  const nowMonth = new Date().toISOString().slice(0,7);
+  const [summaryMonth, setSummaryMonth] = useState(nowMonth);
+  const [summary, setSummary] = useState([]);
+  const [markForm, setMarkForm] = useState({});
+
+  const load = () => { setLoading(true);
+    Promise.all([employeesAPI.getAll(), attendanceAPI.getAll({ date })])
+      .then(([e,a])=>{
+        const emps = e.data.data.filter(x=>x.status==='Active');
+        setEmployees(emps);
+        setRecords(a.data.data);
+        // Pre-fill mark form
+        const form = {};
+        emps.forEach(emp => {
+          const existing = a.data.data.find(r=>r.employee?._id===emp._id);
+          form[emp._id] = { status: existing?.status||'Present', shift: existing?.shift||emp.shift||'Day', checkIn: existing?.checkIn||'', checkOut: existing?.checkOut||'', overtimeHours: existing?.overtimeHours||0 };
+        });
+        setMarkForm(form);
+        setLoading(false);
+      }).catch(()=>setLoading(false));
+  };
+  useEffect(load, [date]);
+
+  const loadSummary = () => { attendanceAPI.summary({ month:summaryMonth }).then(r=>setSummary(r.data.data)).catch(()=>{}); };
+  useEffect(loadSummary, [summaryMonth]);
+
+  const submitAttendance = async () => {
+    const records = Object.entries(markForm).map(([empId, data])=>({ employee:empId, ...data }));
+    try { await attendanceAPI.bulkMark({ date, records }); toast.success('Attendance marked'); load(); }
+    catch(err){ toast.error(err.response?.data?.message||'Failed'); }
+  };
+
+  if (loading) return <Loader/>;
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Attendance</h2>
+      <div style={{ display:'flex', gap:8 }}>
+        {['mark','summary'].map(t=><button key={t} onClick={()=>setTab(t)} style={{ padding:'8px 16px', background:tab===t?'#10b98118':'#141820', border:'1px solid '+(tab===t?'#10b98140':'#1e2533'), borderRadius:8, color:tab===t?'#10b981':'#8892a4', fontWeight:600, fontSize:12, cursor:'pointer', textTransform:'capitalize' }}>{t==='mark'?'Daily Mark':'Monthly Summary'}</button>)}
+      </div>
+    </div>
+
+    {tab==='mark' && <div>
+      <div style={{ display:'flex', gap:12, marginBottom:16, alignItems:'flex-end' }}>
+        <Input label="Date" type="date" value={date} onChange={setDate}/>
+        <Btn onClick={submitAttendance} icon={I.check}>Save Attendance</Btn>
+      </div>
+
+      <div style={{ background:'#141820', borderRadius:14, border:'1px solid #1e2533', overflow:'hidden' }}>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
+          <thead><tr style={{ background:'#0c0f14' }}>
+            <th style={{ padding:'12px 16px', textAlign:'left', color:'#8892a4', fontWeight:600, fontSize:11, textTransform:'uppercase', letterSpacing:0.5 }}>Employee</th>
+            <th style={{ padding:'12px 16px', textAlign:'center', color:'#8892a4', fontWeight:600, fontSize:11, textTransform:'uppercase' }}>Shift</th>
+            <th style={{ padding:'12px 16px', textAlign:'center', color:'#8892a4', fontWeight:600, fontSize:11, textTransform:'uppercase' }}>Status</th>
+            <th style={{ padding:'12px 16px', textAlign:'center', color:'#8892a4', fontWeight:600, fontSize:11, textTransform:'uppercase' }}>Check In</th>
+            <th style={{ padding:'12px 16px', textAlign:'center', color:'#8892a4', fontWeight:600, fontSize:11, textTransform:'uppercase' }}>Check Out</th>
+            <th style={{ padding:'12px 16px', textAlign:'center', color:'#8892a4', fontWeight:600, fontSize:11, textTransform:'uppercase' }}>OT Hrs</th>
+          </tr></thead>
+          <tbody>
+            {employees.map((emp,i) => {
+              const f = markForm[emp._id] || {};
+              const upd = (key, val) => setMarkForm(p=>({...p,[emp._id]:{...p[emp._id],[key]:val}}));
+              return <tr key={emp._id} style={{ background:i%2===0?'#141820':'#0c0f14' }}>
+                <td style={{ padding:'10px 16px', color:'#e2e8f0', borderBottom:'1px solid #1e2533' }}>
+                  <div><b>{emp.name}</b></div><div style={{fontSize:10,color:'#8892a4'}}>{emp.role}</div>
+                </td>
+                <td style={{ padding:'8px', textAlign:'center', borderBottom:'1px solid #1e2533' }}>
+                  <select value={f.shift||'Day'} onChange={e=>upd('shift',e.target.value)} style={{ padding:'6px 8px', background:'#0c0f14', border:'1px solid #1e2533', borderRadius:6, color:'#e2e8f0', fontSize:11, outline:'none' }}>
+                    <option value="Day">Day</option><option value="Night">Night</option>
+                  </select>
+                </td>
+                <td style={{ padding:'8px', textAlign:'center', borderBottom:'1px solid #1e2533' }}>
+                  <select value={f.status||'Present'} onChange={e=>upd('status',e.target.value)} style={{ padding:'6px 8px', background:'#0c0f14', border:`1px solid ${f.status==='Present'?'#10b98140':f.status==='Absent'?'#ef444440':'#f59e0b40'}`, borderRadius:6, color:f.status==='Present'?'#10b981':f.status==='Absent'?'#ef4444':'#f59e0b', fontSize:11, fontWeight:600, outline:'none' }}>
+                    <option value="Present">Present</option><option value="Absent">Absent</option><option value="Late">Late</option><option value="Half Day">Half Day</option><option value="Leave">Leave</option>
+                  </select>
+                </td>
+                <td style={{ padding:'8px', textAlign:'center', borderBottom:'1px solid #1e2533' }}><input type="time" value={f.checkIn||''} onChange={e=>upd('checkIn',e.target.value)} style={{ padding:'4px 8px', background:'#0c0f14', border:'1px solid #1e2533', borderRadius:6, color:'#e2e8f0', fontSize:11, outline:'none' }}/></td>
+                <td style={{ padding:'8px', textAlign:'center', borderBottom:'1px solid #1e2533' }}><input type="time" value={f.checkOut||''} onChange={e=>upd('checkOut',e.target.value)} style={{ padding:'4px 8px', background:'#0c0f14', border:'1px solid #1e2533', borderRadius:6, color:'#e2e8f0', fontSize:11, outline:'none' }}/></td>
+                <td style={{ padding:'8px', textAlign:'center', borderBottom:'1px solid #1e2533' }}><input type="number" value={f.overtimeHours||0} onChange={e=>upd('overtimeHours',Number(e.target.value))} style={{ width:50, padding:'4px 6px', background:'#0c0f14', border:'1px solid #1e2533', borderRadius:6, color:'#e2e8f0', fontSize:11, outline:'none', textAlign:'center' }}/></td>
+              </tr>;
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>}
+
+    {tab==='summary' && <div>
+      <div style={{ marginBottom:16, display:'flex', gap:12, alignItems:'flex-end' }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+          <label style={{ fontSize:11, fontWeight:600, color:'#8892a4', textTransform:'uppercase', letterSpacing:0.5 }}>Month</label>
+          <input type="month" value={summaryMonth} onChange={e=>setSummaryMonth(e.target.value)} style={{ padding:'8px 12px', background:'#0c0f14', border:'1px solid #1e2533', borderRadius:8, color:'#e2e8f0', fontSize:12, outline:'none' }}/>
+        </div>
+      </div>
+      <DataTable columns={[
+        { key:'employee', label:'Employee', render:v=><div><b>{v?.name}</b><div style={{fontSize:10,color:'#8892a4'}}>{v?.role} · {v?.shift}</div></div> },
+        { key:'present', label:'Present', align:'right', render:v=><b style={{color:'#10b981'}}>{v}</b> },
+        { key:'late', label:'Late', align:'right', render:v=>v?<span style={{color:'#f59e0b'}}>{v}</span>:'0' },
+        { key:'absent', label:'Absent', align:'right', render:v=>v?<span style={{color:'#ef4444'}}>{v}</span>:'0' },
+        { key:'halfDay', label:'Half', align:'right' },
+        { key:'leave', label:'Leave', align:'right' },
+        { key:'overtime', label:'OT Hrs', align:'right', render:v=>v?<span style={{color:'#06b6d4'}}>{v}</span>:'0' },
+        { key:'attendancePct', label:'Rate', align:'right', render:v=><Badge text={`${v}%`} color={v>=90?'#10b981':v>=70?'#f59e0b':'#ef4444'}/> },
+      ]} data={summary}/>
+    </div>}
+  </div>;
+};
+
+// ─── EMPLOYEE PERFORMANCE PAGE ───
+const PerformancePage = () => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState({ startDate:daysAgo(30), endDate:today() });
+
+  const load = useCallback(() => { setLoading(true); dashboardAPI.getPerformance(range).then(r=>{setData(r.data.data); setLoading(false);}).catch(()=>setLoading(false)); }, [range]);
+  useEffect(load, [load]);
+
+  if (loading) return <Loader/>;
+  if (!data) return <div style={{ color:'#ef4444', padding:40 }}>Failed to load</div>;
+
+  const perf = data.performance || [];
+  const topSeller = perf.reduce((best, p) => p.salesAmount > (best?.salesAmount||0) ? p : best, null);
+
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:18, flexWrap:'wrap', gap:10 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Employee Performance</h2>
+      <div style={{ display:'flex', gap:10, alignItems:'flex-end' }}>
+        <Input label="From" type="date" value={range.startDate} onChange={v=>setRange(p=>({...p,startDate:v}))}/>
+        <Input label="To" type="date" value={range.endDate} onChange={v=>setRange(p=>({...p,endDate:v}))}/>
+      </div>
+    </div>
+
+    {topSeller && topSeller.salesAmount > 0 && <div style={{ background:'linear-gradient(135deg,#10b98112,#3b82f612)', border:'1px solid #10b98130', borderRadius:14, padding:18, marginBottom:18, display:'flex', alignItems:'center', gap:14 }}>
+      <div style={{ width:42, height:42, borderRadius:10, background:'#10b98120', display:'flex', alignItems:'center', justifyContent:'center' }}><div style={{ width:20, height:20, color:'#10b981' }}>{I.target}</div></div>
+      <div>
+        <div style={{ fontSize:11, color:'#10b981', fontWeight:700, textTransform:'uppercase', letterSpacing:1 }}>Top Performer</div>
+        <div style={{ fontSize:16, fontWeight:700, color:'#e2e8f0' }}>{topSeller.employee?.name} — {PKR(topSeller.salesAmount)} sales · {topSeller.dispensed.toLocaleString()}L dispensed</div>
+      </div>
+    </div>}
+
+    <DataTable columns={[
+      { key:'employee', label:'Employee', render:v=><div><b>{v?.name}</b><div style={{fontSize:10,color:'#8892a4'}}>{v?.role} · {v?.shift}</div></div> },
+      { key:'shifts', label:'Shifts', align:'right' },
+      { key:'dispensed', label:'Dispensed (L)', align:'right', render:v=><b style={{color:'#3b82f6'}}>{v.toLocaleString()}</b> },
+      { key:'salesAmount', label:'Sales', align:'right', render:v=><b style={{color:'#10b981',fontFamily:"'JetBrains Mono',monospace"}}>{PKR(v)}</b> },
+      { key:'avgDispensed', label:'Avg/Shift', align:'right', render:v=>`${v.toLocaleString()}L` },
+      { key:'shortExcess', label:'Short/Excess', align:'right', render:v=><span style={{color:v<0?'#ef4444':v>0?'#10b981':'#8892a4',fontWeight:600}}>{PKR(v)}</span> },
+      { key:'present', label:'Present', align:'right', render:v=><span style={{color:'#10b981'}}>{v}</span> },
+      { key:'late', label:'Late', align:'right', render:v=>v?<span style={{color:'#f59e0b'}}>{v}</span>:'0' },
+      { key:'absent', label:'Absent', align:'right', render:v=>v?<span style={{color:'#ef4444'}}>{v}</span>:'0' },
+      { key:'overtime', label:'OT', align:'right' },
+      { key:'attendancePct', label:'Att%', align:'right', render:v=>v>0?<Badge text={`${v}%`} color={v>=90?'#10b981':v>=70?'#f59e0b':'#ef4444'}/>:'—' },
+    ]} data={perf.sort((a,b)=>(b.salesAmount||0)-(a.salesAmount||0))}/>
+
+    {data.salesByShift?.length>0 && <div style={{ marginTop:20 }}>
+      <div style={{ fontSize:14, fontWeight:700, color:'#e2e8f0', marginBottom:10 }}>Sales by Shift</div>
+      <div style={{ display:'grid', gridTemplateColumns:`repeat(${data.salesByShift.length},1fr)`, gap:14 }}>
+        {data.salesByShift.map(s=><div key={s._id} style={{ background:'#141820', borderRadius:12, padding:18, border:'1px solid #1e2533', textAlign:'center' }}>
+          <Badge text={s._id} color={s._id==='day'?'#f59e0b':'#06b6d4'}/>
+          <div style={{ fontSize:20, fontWeight:800, color:'#e2e8f0', marginTop:8, fontFamily:"'JetBrains Mono',monospace" }}>{PKR(s.totalAmount)}</div>
+          <div style={{ fontSize:11, color:'#8892a4', marginTop:4 }}>{s.totalQty?.toLocaleString()}L · {s.count} txns</div>
+        </div>)}
+      </div>
+    </div>}
+  </div>;
+};
+
+// ─── TANK TRANSFER PAGE ───
+const TankTransferPage = () => {
+  const [tanks, setTanks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ fromTank:'', toTank:'', quantity:'', notes:'' });
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => { tanksAPI.getAll().then(r=>{setTanks(r.data.data); setLoading(false);}).catch(()=>setLoading(false)); }, []);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const r = await tankTransferAPI.transfer({ ...form, quantity:Number(form.quantity) });
+      toast.success(r.data.message);
+      setForm({ fromTank:'', toTank:'', quantity:'', notes:'' });
+      tanksAPI.getAll().then(r=>setTanks(r.data.data));
+    } catch(err) { toast.error(err.response?.data?.message||'Transfer failed'); }
+    setSubmitting(false);
+  };
+
+  if (loading) return <Loader/>;
+  return <div>
+    <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', marginBottom:18 }}>Tank-to-Tank Transfer</h2>
+
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', gap:14, marginBottom:24 }}>
+      {tanks.map(t=><TankGauge key={t._id} tank={t}/>)}
+    </div>
+
+    <div style={{ background:'#141820', borderRadius:14, padding:24, border:'1px solid #1e2533', maxWidth:600 }}>
+      <div style={{ fontSize:14, fontWeight:700, color:'#e2e8f0', marginBottom:16, display:'flex', alignItems:'center', gap:8 }}><div style={{ width:18, height:18, color:'#3b82f6' }}>{I.swap}</div>Transfer Fuel</div>
+      <form onSubmit={submit}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr auto 1fr', gap:14, alignItems:'flex-end', marginBottom:14 }}>
+          <Select label="From Tank" value={form.fromTank} onChange={v=>setForm(p=>({...p,fromTank:v}))} options={[{value:'',label:'Select...'},...tanks.map(t=>({value:t._id,label:`${t.name} (${t.currentStock?.toLocaleString()}L)`}))]}/>
+          <div style={{ width:30, height:30, borderRadius:'50%', background:'#1e2533', display:'flex', alignItems:'center', justifyContent:'center', color:'#8892a4', marginBottom:6 }}><div style={{ width:16, height:16 }}>{I.swap}</div></div>
+          <Select label="To Tank" value={form.toTank} onChange={v=>setForm(p=>({...p,toTank:v}))} options={[{value:'',label:'Select...'},...tanks.filter(t=>t._id!==form.fromTank).map(t=>({value:t._id,label:`${t.name} (${t.currentStock?.toLocaleString()}L)`}))]}/>
+        </div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+          <Input label="Quantity (Litres)" type="number" value={form.quantity} onChange={v=>setForm(p=>({...p,quantity:v}))} required/>
+          <Input label="Notes" value={form.notes} onChange={v=>setForm(p=>({...p,notes:v}))} placeholder="Reason for transfer"/>
+        </div>
+        <div style={{ display:'flex', justifyContent:'flex-end', marginTop:18 }}>
+          <Btn type="submit" icon={I.swap}>{submitting?'Transferring...':'Transfer Fuel'}</Btn>
+        </div>
+      </form>
+    </div>
+  </div>;
+};
+
+// ─── DAILY CHECKLIST PAGE ───
+const ChecklistPage = () => {
+  const [checklists, setChecklists] = useState([]);
+  const [employees, setEmployees] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [activeChecklist, setActiveChecklist] = useState(null);
+  const [form, setForm] = useState({ date:today(), shift:'day', type:'opening', completedBy:'' });
+
+  const load = () => { setLoading(true); Promise.all([checklistAPI.getAll({ startDate:daysAgo(7), endDate:today() }), employeesAPI.getAll()]).then(([c,e])=>{ setChecklists(c.data.data); setEmployees(e.data.data); setLoading(false); }).catch(()=>setLoading(false)); };
+  useEffect(load, []);
+
+  const createNew = async () => {
+    try {
+      const r = await checklistAPI.create({ date:form.date, shift:form.shift, type:form.type, completedBy:form.completedBy||undefined });
+      toast.success('Checklist created');
+      setActiveChecklist(r.data.data);
+      setModal(false); load();
+    } catch(err){ toast.error(err.response?.data?.message||'Failed'); }
+  };
+
+  const toggleItem = async (idx) => {
+    if (!activeChecklist) return;
+    const items = [...activeChecklist.items];
+    items[idx].checked = !items[idx].checked;
+    try {
+      const r = await checklistAPI.update(activeChecklist._id, { items });
+      setActiveChecklist(r.data.data);
+      load();
+    } catch(e){ toast.error('Failed to update'); }
+  };
+
+  const updateItemRemark = async (idx, remarks) => {
+    if (!activeChecklist) return;
+    const items = [...activeChecklist.items];
+    items[idx].remarks = remarks;
+    setActiveChecklist({ ...activeChecklist, items });
+  };
+
+  const saveRemarks = async () => {
+    try { const r = await checklistAPI.update(activeChecklist._id, { items: activeChecklist.items }); setActiveChecklist(r.data.data); toast.success('Saved'); }
+    catch(e){ toast.error('Failed'); }
+  };
+
+  const verify = async (id) => {
+    try { await checklistAPI.update(id, { status:'Verified' }); toast.success('Verified'); load(); }
+    catch(e){ toast.error('Failed'); }
+  };
+
+  const del = async (id) => { if(!confirm('Delete?')) return; try { await checklistAPI.delete(id); toast.success('Deleted'); if(activeChecklist?._id===id) setActiveChecklist(null); load(); } catch(e){ toast.error('Failed'); } };
+
+  if (loading) return <Loader/>;
+
+  return <div>
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#e2e8f0', margin:0 }}>Daily Checklists</h2>
+      <Btn icon={I.plus} onClick={()=>setModal(true)}>New Checklist</Btn>
+    </div>
+
+    <div style={{ display:'grid', gridTemplateColumns:activeChecklist?'1fr 1.5fr':'1fr', gap:20 }}>
+      {/* Checklist list */}
+      <div>
+        <DataTable columns={[
+          { key:'date', label:'Date', render:v=>fmtDate(v) },
+          { key:'shift', label:'Shift', render:v=><Badge text={v} color={v==='day'?'#f59e0b':'#06b6d4'}/> },
+          { key:'type', label:'Type', render:v=><Badge text={v} color={v==='opening'?'#10b981':'#8b5cf6'}/> },
+          { key:'items', label:'Done', align:'right', render:v=>{ const done=v.filter(i=>i.checked).length; return <span style={{color:done===v.length?'#10b981':'#f59e0b',fontWeight:600}}>{done}/{v.length}</span>; }},
+          { key:'status', label:'', render:v=><Badge text={v} color={v==='Verified'?'#10b981':v==='Completed'?'#3b82f6':'#f59e0b'}/> },
+          { key:'_', label:'', align:'center', render:(_,r)=><div style={{display:'flex',gap:4,justifyContent:'center'}}>
+            <button onClick={()=>setActiveChecklist(r)} style={{padding:'3px 8px',background:'#3b82f620',border:'1px solid #3b82f640',borderRadius:6,color:'#3b82f6',fontSize:11,cursor:'pointer'}}>Open</button>
+            {r.status==='Completed' && <button onClick={()=>verify(r._id)} style={{padding:'3px 8px',background:'#10b98120',border:'1px solid #10b98140',borderRadius:6,color:'#10b981',fontSize:11,cursor:'pointer'}}>Verify</button>}
+            <button onClick={()=>del(r._id)} style={{padding:'3px 8px',background:'#ef444420',border:'1px solid #ef444440',borderRadius:6,color:'#ef4444',fontSize:11,cursor:'pointer'}}>Del</button>
+          </div>}
+        ]} data={checklists}/>
+      </div>
+
+      {/* Active checklist detail */}
+      {activeChecklist && <div style={{ background:'#141820', borderRadius:14, padding:20, border:'1px solid #1e2533' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
+          <div>
+            <div style={{ fontSize:14, fontWeight:700, color:'#e2e8f0' }}>{activeChecklist.type==='opening'?'Opening':'Closing'} Checklist</div>
+            <div style={{ fontSize:11, color:'#8892a4' }}>{fmtDate(activeChecklist.date)} · {activeChecklist.shift} shift · {activeChecklist.completedBy?.name||'—'}</div>
+          </div>
+          <Badge text={activeChecklist.status} color={activeChecklist.status==='Verified'?'#10b981':activeChecklist.status==='Completed'?'#3b82f6':'#f59e0b'}/>
+        </div>
+
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          {activeChecklist.items.map((item, i) => (
+            <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'8px 10px', background:item.checked?'#10b98108':'#0c0f14', borderRadius:8, border:`1px solid ${item.checked?'#10b98120':'#1e2533'}` }}>
+              <input type="checkbox" checked={item.checked} onChange={()=>toggleItem(i)} style={{ marginTop:3, cursor:'pointer', accentColor:'#10b981' }}/>
+              <div style={{ flex:1 }}>
+                <div style={{ fontSize:13, color:item.checked?'#10b981':'#e2e8f0', fontWeight:item.checked?600:400, textDecoration:item.checked?'line-through':'none' }}>{item.label}</div>
+                <input placeholder="Remarks..." value={item.remarks||''} onChange={e=>updateItemRemark(i, e.target.value)}
+                  style={{ marginTop:4, width:'100%', padding:'4px 8px', background:'transparent', border:'1px solid #1e2533', borderRadius:4, color:'#8892a4', fontSize:11, outline:'none', boxSizing:'border-box' }}/>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display:'flex', justifyContent:'flex-end', marginTop:14, gap:8 }}>
+          <Btn variant="ghost" onClick={saveRemarks}>Save Remarks</Btn>
+          <button onClick={()=>setActiveChecklist(null)} style={{ padding:'8px 14px', background:'#1e2533', border:'none', borderRadius:6, color:'#8892a4', fontSize:12, cursor:'pointer' }}>Close</button>
+        </div>
+      </div>}
+    </div>
+
+    <Modal isOpen={modal} onClose={()=>setModal(false)} title="New Checklist">
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+        <Input label="Date" type="date" value={form.date} onChange={v=>setForm(p=>({...p,date:v}))}/>
+        <Select label="Shift" value={form.shift} onChange={v=>setForm(p=>({...p,shift:v}))} options={[{value:'day',label:'Day'},{value:'night',label:'Night'}]}/>
+        <Select label="Type" value={form.type} onChange={v=>setForm(p=>({...p,type:v}))} options={[{value:'opening',label:'Opening'},{value:'closing',label:'Closing'}]}/>
+        <Select label="Completed By" value={form.completedBy} onChange={v=>setForm(p=>({...p,completedBy:v}))} options={[{value:'',label:'Select...'},...employees.map(e=>({value:e._id,label:`${e.name} (${e.role})`}))]}/>
+      </div>
+      <div style={{ display:'flex', gap:12, justifyContent:'flex-end', marginTop:20 }}>
+        <Btn variant="ghost" onClick={()=>setModal(false)}>Cancel</Btn>
+        <Btn onClick={createNew}>Create Checklist</Btn>
+      </div>
+    </Modal>
+  </div>;
+};
+
 // ─── NAV & LAYOUT ───
 const NAV = [
   { id:'dashboard', label:'Dashboard', icon:I.dash },
+  { id:'quickSale', label:'Quick Sale (POS)', icon:I.zap },
   { id:'sales', label:'Sales', icon:I.dollar },
   { id:'purchases', label:'Purchases', icon:I.cart },
   { id:'readings', label:'Shift Readings', icon:I.gauge },
+  { id:'shiftHandover', label:'Shift Handover', icon:I.swap },
   { id:'dips', label:'Tank Dips', icon:I.drop },
   { id:'stock', label:'Stock', icon:I.box },
   { id:'pumps', label:'Pumps & Tanks', icon:I.pump },
+  { id:'tankTransfer', label:'Tank Transfer', icon:I.swap },
   { id:'credit', label:'Credit / Payments', icon:I.card },
   { id:'supplierPay', label:'Supplier Payments', icon:I.money },
   { id:'suppliers', label:'Suppliers', icon:I.truck },
   { id:'customers', label:'Customers', icon:I.users },
   { id:'employees', label:'Employees', icon:I.user },
+  { id:'attendance', label:'Attendance', icon:I.clock },
+  { id:'performance', label:'Performance', icon:I.target },
   { id:'payroll', label:'Payroll', icon:I.wallet },
   { id:'expenses', label:'Expenses', icon:I.receipt },
   { id:'cashClosing', label:'Cash Closing', icon:I.money },
+  { id:'checklist', label:'Checklists', icon:I.clipboard },
   { id:'history', label:'History', icon:I.history },
   { id:'reports', label:'Reports', icon:I.chart },
   { id:'settings', label:'Settings', icon:I.settings },
@@ -2228,20 +2806,26 @@ const NAV = [
 
 const PAGES = {
   dashboard:DashboardPage,
+  quickSale:QuickSalePage,
   sales:SalesPage,
   purchases:PurchasesPage,
   readings:ReadingsPage,
+  shiftHandover:ShiftHandoverPage,
   dips:DipsPage,
   stock:StockPage,
   pumps:PumpsPage,
+  tankTransfer:TankTransferPage,
   credit:CreditPage,
   supplierPay:SupplierPaymentsPage,
   suppliers:SuppliersPage,
   customers:CustomersPage,
   employees:EmployeesPage,
+  attendance:AttendancePage,
+  performance:PerformancePage,
   payroll:PayrollPage,
   expenses:ExpensesPage,
   cashClosing:CashClosingPage,
+  checklist:ChecklistPage,
   history:HistoryPage,
   reports:ReportsPage,
   settings:SettingsPage,

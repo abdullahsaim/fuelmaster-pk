@@ -12,7 +12,8 @@
       "Bash(node -c server/models/CashClosing.js)",
       "Bash(node -c server/controllers/cashClosingController.js)",
       "Bash(node -c server/controllers/dashboardController.js)",
-      "Bash(node -c server/routes/operations.js)"
+      "Bash(node -c server/routes/operations.js)",
+      "Bash(node -e ':*)"
     ]
   }
 }

@@ -5,6 +5,10 @@ const dip = require('../controllers/dipController');
 const payment = require('../controllers/paymentController');
 const history = require('../controllers/historyController');
 const cashClosing = require('../controllers/cashClosingController');
+const shiftHandover = require('../controllers/shiftHandoverController');
+const attendance = require('../controllers/attendanceController');
+const tankTransfer = require('../controllers/tankTransferController');
+const checklist = require('../controllers/checklistController');
 const createCrudController = require('../controllers/crudFactory');
 const Pump = require('../models/Pump');
 
@@ -40,5 +44,24 @@ router.get('/stock-movements', history.stockMovements);
 router.get('/cash-closing/populate', cashClosing.populateDay);
 router.route('/cash-closing').get(cashClosing.getCashClosings).post(cashClosing.createCashClosing);
 router.route('/cash-closing/:id').put(cashClosing.updateCashClosing).delete(authorize('owner', 'manager'), cashClosing.deleteCashClosing);
+
+// ─── Shift Handovers ───
+router.get('/shift-handovers/populate', shiftHandover.populateShift);
+router.route('/shift-handovers').get(shiftHandover.getHandovers).post(shiftHandover.createHandover);
+router.put('/shift-handovers/:id/acknowledge', shiftHandover.acknowledgeHandover);
+router.delete('/shift-handovers/:id', authorize('owner', 'manager'), shiftHandover.deleteHandover);
+
+// ─── Attendance ───
+router.route('/attendance').get(attendance.getAttendance);
+router.post('/attendance/bulk', attendance.bulkMark);
+router.get('/attendance/summary', attendance.monthlySummary);
+router.delete('/attendance/:id', authorize('owner', 'manager'), attendance.deleteAttendance);
+
+// ─── Tank Transfer ───
+router.post('/tank-transfer', authorize('owner', 'manager'), tankTransfer.transfer);
+
+// ─── Checklists ───
+router.route('/checklists').get(checklist.getChecklists).post(checklist.createChecklist);
+router.route('/checklists/:id').put(checklist.updateChecklist).delete(authorize('owner', 'manager'), checklist.deleteChecklist);
 
 module.exports = router;
