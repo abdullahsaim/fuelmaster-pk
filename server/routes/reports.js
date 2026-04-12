@@ -1,8 +1,11 @@
 const router = require('express').Router();
 const { protect } = require('../middleware/auth');
+const { tenantScope, featureGate } = require('../middleware/tenant');
 const r = require('../controllers/reportsController');
 
 router.use(protect);
+router.use(tenantScope);
+router.use(featureGate('reports'));
 
 router.get('/sales',             r.salesReport);
 router.get('/purchases',         r.purchaseReport);

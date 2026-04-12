@@ -5,6 +5,7 @@ exports.getPayrolls = async (req, res) => {
   try {
     const { month, year, status, employee } = req.query;
     const filter = {};
+    if (req.tenantId) filter.tenant = req.tenantId;
     if (month) filter.month = month;
     if (year) filter.year = parseInt(year);
     if (status) filter.status = status;
@@ -27,14 +28,19 @@ exports.generatePayroll = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Month and year are required' });
     }
     // Check if already generated
-    const existing = await Payroll.findOne({ month, year });
+    const existingFilter = { month, year };
+    if (req.tenantId) existingFilter.tenant = req.tenantId;
+    const existing = await Payroll.findOne(existingFilter);
     if (existing) {
       return res.status(400).json({ success: false, message: `Payroll for ${month}/${year} already exists. Delete existing to regenerate.` });
     }
-    const employees = await Employee.find({ status: 'Active' });
+    const empFilter = { status: 'Active' };
+    if (req.tenantId) empFilter.tenant = req.tenantId;
+    const employees = await Employee.find(empFilter);
     const payrolls = [];
     for (const emp of employees) {
       const payroll = await Payroll.create({
+        tenant: req.tenantId,
         employee: emp._id,
         month,
         year,
@@ -51,7 +57,7 @@ exports.generatePayroll = async (req, res) => {
       });
       payrolls.push(payroll);
     }
-    const populated = await Payroll.find({ month, year })
+    const populated = await Payroll.find(existingFilter)
       .populate('employee', 'name cnic role shift salary phone');
     res.status(201).json({ success: true, count: populated.length, data: populated });
   } catch (error) {
@@ -61,7 +67,9 @@ exports.generatePayroll = async (req, res) => {
 
 exports.updatePayroll = async (req, res) => {
   try {
-    const payroll = await Payroll.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const payroll = await Payroll.findOneAndUpdate(filter, req.body, { new: true, runValidators: true })
       .populate('employee', 'name cnic role shift salary phone');
     if (!payroll) return res.status(404).json({ success: false, message: 'Payroll record not found' });
     res.json({ success: true, data: payroll });
@@ -74,10 +82,9 @@ exports.updatePayroll = async (req, res) => {
 exports.processPayroll = async (req, res) => {
   try {
     const { month, year } = req.body;
-    const result = await Payroll.updateMany(
-      { month, year, status: 'Pending' },
-      { $set: { status: 'Paid', paymentDate: new Date() } }
-    );
+    const filter = { month, year, status: 'Pending' };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const result = await Payroll.updateMany(filter, { $set: { status: 'Paid', paymentDate: new Date() } });
     res.json({ success: true, message: `${result.modifiedCount} payrolls processed`, modifiedCount: result.modifiedCount });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -86,7 +93,9 @@ exports.processPayroll = async (req, res) => {
 
 exports.deletePayroll = async (req, res) => {
   try {
-    const payroll = await Payroll.findByIdAndDelete(req.params.id);
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const payroll = await Payroll.findOneAndDelete(filter);
     if (!payroll) return res.status(404).json({ success: false, message: 'Payroll record not found' });
     res.json({ success: true, message: 'Payroll record deleted' });
   } catch (error) {

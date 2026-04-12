@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 // Tank dipping (manual physical stock measurement) record.
 // Compared against book stock to detect gain/loss/evaporation/leak.
 const DipSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   date:          { type: Date, required: true, default: Date.now },
   shift:         { type: String, enum: ['day', 'night', 'opening', 'closing'], default: 'opening' },
   tank:          { type: mongoose.Schema.Types.ObjectId, ref: 'Tank', required: true },

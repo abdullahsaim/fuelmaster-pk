@@ -6,6 +6,7 @@ exports.list = async (req, res) => {
   try {
     const { startDate, endDate, nozzle, shift, page = 1, limit = 100 } = req.query;
     const filter = {};
+    if (req.tenantId) filter.tenant = req.tenantId;
     if (nozzle) filter.nozzle = nozzle;
     if (shift)  filter.shift = shift;
     if (startDate || endDate) {
@@ -29,12 +30,13 @@ exports.list = async (req, res) => {
 
 exports.create = async (req, res) => {
   try {
-    const r = await Reading.create({ ...req.body, recordedBy: req.user._id });
+    const r = await Reading.create({ ...req.body, tenant: req.tenantId, recordedBy: req.user._id });
 
     // Decrement tank stock by dispensed quantity (book stock follows readings)
     if (r.tank && r.dispensed > 0) {
       const tank = await Tank.findByIdAndUpdate(r.tank, { $inc: { currentStock: -r.dispensed } }, { new: true });
       await StockMovement.create({
+        tenant: req.tenantId,
         date: r.date, tank: r.tank, fuelType: r.fuelType, type: 'OUT',
         quantity: r.dispensed, source: 'reading', reference: r._id, refModel: 'Reading',
         balanceAfter: tank?.currentStock, createdBy: req.user._id,
@@ -49,7 +51,9 @@ exports.create = async (req, res) => {
 
 exports.remove = async (req, res) => {
   try {
-    const r = await Reading.findById(req.params.id);
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const r = await Reading.findOne(filter);
     if (!r) return res.status(404).json({ success: false, message: 'Not found' });
     if (r.tank && r.dispensed > 0) {
       await Tank.findByIdAndUpdate(r.tank, { $inc: { currentStock: r.dispensed } });

@@ -6,6 +6,7 @@ exports.list = async (req, res) => {
   try {
     const { tank, startDate, endDate, page = 1, limit = 100 } = req.query;
     const filter = {};
+    if (req.tenantId) filter.tenant = req.tenantId;
     if (tank) filter.tank = tank;
     if (startDate || endDate) {
       filter.date = {};
@@ -31,6 +32,7 @@ exports.create = async (req, res) => {
 
     const dip = await Dip.create({
       ...req.body,
+      tenant: req.tenantId,
       bookStock: req.body.bookStock ?? tank.currentStock,
       fuelType: tank.fuelType?._id,
       recordedBy: req.user._id,
@@ -41,6 +43,7 @@ exports.create = async (req, res) => {
       tank.currentStock = dip.physicalStock;
       await tank.save();
       await StockMovement.create({
+        tenant: req.tenantId,
         date: dip.date, tank: tank._id, fuelType: tank.fuelType?._id, type: 'ADJUST',
         quantity: Math.abs(dip.variance), source: 'dip', reference: dip._id, refModel: 'Dip',
         balanceAfter: tank.currentStock, createdBy: req.user._id,
@@ -53,10 +56,11 @@ exports.create = async (req, res) => {
 
 exports.remove = async (req, res) => {
   try {
-    const dip = await Dip.findById(req.params.id);
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const dip = await Dip.findOne(filter);
     if (!dip) return res.status(404).json({ success: false, message: 'Not found' });
     if (dip.adjustStock) {
-      // Reverse the adjustment
       await Tank.findByIdAndUpdate(dip.tank, { $inc: { currentStock: -dip.variance } });
       await StockMovement.deleteMany({ reference: dip._id, refModel: 'Dip' });
     }

@@ -8,6 +8,7 @@ exports.listCreditPayments = async (req, res) => {
   try {
     const { customer, startDate, endDate, page = 1, limit = 100 } = req.query;
     const filter = {};
+    if (req.tenantId) filter.tenant = req.tenantId;
     if (customer) filter.customer = customer;
     if (startDate || endDate) {
       filter.date = {};
@@ -27,7 +28,7 @@ exports.listCreditPayments = async (req, res) => {
 
 exports.createCreditPayment = async (req, res) => {
   try {
-    const payment = await CreditPayment.create({ ...req.body, receivedBy: req.user._id });
+    const payment = await CreditPayment.create({ ...req.body, tenant: req.tenantId, receivedBy: req.user._id });
     // Reduce customer outstanding balance
     await Customer.findByIdAndUpdate(payment.customer, { $inc: { balance: -payment.amount } });
     const populated = await CreditPayment.findById(payment._id).populate('customer', 'name type balance');
@@ -37,7 +38,9 @@ exports.createCreditPayment = async (req, res) => {
 
 exports.deleteCreditPayment = async (req, res) => {
   try {
-    const payment = await CreditPayment.findById(req.params.id);
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const payment = await CreditPayment.findOne(filter);
     if (!payment) return res.status(404).json({ success: false, message: 'Not found' });
     await Customer.findByIdAndUpdate(payment.customer, { $inc: { balance: payment.amount } });
     await payment.deleteOne();
@@ -50,6 +53,7 @@ exports.listSupplierPayments = async (req, res) => {
   try {
     const { supplier, startDate, endDate, page = 1, limit = 100 } = req.query;
     const filter = {};
+    if (req.tenantId) filter.tenant = req.tenantId;
     if (supplier) filter.supplier = supplier;
     if (startDate || endDate) {
       filter.date = {};
@@ -69,7 +73,7 @@ exports.listSupplierPayments = async (req, res) => {
 
 exports.createSupplierPayment = async (req, res) => {
   try {
-    const payment = await SupplierPayment.create({ ...req.body, paidBy: req.user._id });
+    const payment = await SupplierPayment.create({ ...req.body, tenant: req.tenantId, paidBy: req.user._id });
     await Supplier.findByIdAndUpdate(payment.supplier, { $inc: { balance: -payment.amount } });
     const populated = await SupplierPayment.findById(payment._id).populate('supplier', 'name type balance');
     res.status(201).json({ success: true, data: populated });
@@ -78,7 +82,9 @@ exports.createSupplierPayment = async (req, res) => {
 
 exports.deleteSupplierPayment = async (req, res) => {
   try {
-    const payment = await SupplierPayment.findById(req.params.id);
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const payment = await SupplierPayment.findOne(filter);
     if (!payment) return res.status(404).json({ success: false, message: 'Not found' });
     await Supplier.findByIdAndUpdate(payment.supplier, { $inc: { balance: payment.amount } });
     await payment.deleteOne();
@@ -91,11 +97,15 @@ exports.customerLedger = async (req, res) => {
   try {
     const Sale = require('../models/Sale');
     const customerId = req.params.id;
-    const customer = await Customer.findById(customerId);
+    const customerFilter = { _id: customerId };
+    if (req.tenantId) customerFilter.tenant = req.tenantId;
+    const customer = await Customer.findOne(customerFilter);
     if (!customer) return res.status(404).json({ success: false, message: 'Not found' });
-    const sales = await Sale.find({ customer: customerId, saleType: 'credit' })
+
+    const tenantMatch = req.tenantId ? { tenant: req.tenantId } : {};
+    const sales = await Sale.find({ ...tenantMatch, customer: customerId, saleType: 'credit' })
       .populate('fuelType', 'name unit').sort({ date: -1 }).limit(200);
-    const payments = await CreditPayment.find({ customer: customerId }).sort({ date: -1 }).limit(200);
+    const payments = await CreditPayment.find({ ...tenantMatch, customer: customerId }).sort({ date: -1 }).limit(200);
 
     const entries = [
       ...sales.map(s => ({ kind: 'sale', date: s.date, debit: s.amount, credit: 0,

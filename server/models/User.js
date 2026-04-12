@@ -6,7 +6,8 @@ const UserSchema = new mongoose.Schema({
   name: { type: String, required: [true, 'Name is required'], trim: true },
   email: { type: String, required: [true, 'Email is required'], unique: true, lowercase: true, trim: true },
   password: { type: String, required: [true, 'Password is required'], minlength: 6, select: false },
-  role: { type: String, enum: ['owner', 'manager', 'cashier', 'operator'], default: 'cashier' },
+  role: { type: String, enum: ['superadmin', 'owner', 'manager', 'cashier', 'operator'], default: 'cashier' },
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant' },
   phone: { type: String, trim: true },
   cnic: { type: String, trim: true },
   isActive: { type: Boolean, default: true },
@@ -25,11 +26,13 @@ UserSchema.methods.matchPassword = async function(enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-// Generate JWT
+// Generate JWT — includes tenant
 UserSchema.methods.getSignedToken = function() {
-  return jwt.sign({ id: this._id, role: this.role }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE,
-  });
+  return jwt.sign(
+    { id: this._id, role: this.role, tenant: this.tenant },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRE }
+  );
 };
 
 module.exports = mongoose.model('User', UserSchema);

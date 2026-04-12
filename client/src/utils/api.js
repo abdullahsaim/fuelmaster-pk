@@ -16,7 +16,16 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('fuelmaster_token');
       localStorage.removeItem('fuelmaster_user');
+      localStorage.removeItem('fuelmaster_tenant');
       window.location.href = '/';
+    }
+    // Subscription expired — broadcast event for UI to handle
+    if (error.response?.status === 402 && error.response?.data?.code === 'SUBSCRIPTION_EXPIRED') {
+      window.dispatchEvent(new CustomEvent('subscription-expired', { detail: error.response.data }));
+    }
+    // Feature locked — broadcast for upgrade prompt
+    if (error.response?.status === 403 && error.response?.data?.code === 'FEATURE_LOCKED') {
+      window.dispatchEvent(new CustomEvent('feature-locked', { detail: error.response.data }));
     }
     return Promise.reject(error);
   }
@@ -26,6 +35,9 @@ export const authAPI = {
   login: (data) => api.post('/auth/login', data),
   register: (data) => api.post('/auth/register', data),
   getMe: () => api.get('/auth/me'),
+  getUsers: () => api.get('/auth/users'),
+  addUser: (data) => api.post('/auth/users', data),
+  updateUser: (id, data) => api.put(`/auth/users/${id}`, data),
 };
 
 export const dashboardAPI = {
@@ -148,6 +160,21 @@ export const checklistAPI = {
   create: (data) => api.post('/checklists', data),
   update: (id, data) => api.put(`/checklists/${id}`, data),
   delete: (id) => api.delete(`/checklists/${id}`),
+};
+
+// ─── SaaS APIs ───
+export const subscriptionAPI = {
+  getPackages: () => api.get('/subscription/packages'),
+  getMy: () => api.get('/subscription'),
+  updateProfile: (data) => api.put('/subscription/profile', data),
+};
+
+export const adminAPI = {
+  getTenants: (params) => api.get('/admin/tenants', { params }),
+  getTenant: (id) => api.get(`/admin/tenants/${id}`),
+  updateTenant: (id, data) => api.put(`/admin/tenants/${id}`, data),
+  deleteTenant: (id) => api.delete(`/admin/tenants/${id}`),
+  recordPayment: (id, data) => api.post(`/admin/tenants/${id}/payment`, data),
 };
 
 export default api;

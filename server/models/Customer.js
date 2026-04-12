@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const CustomerSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   name: { type: String, required: true, trim: true },
   type: { type: String, enum: ['Cash', 'Fleet', 'Corporate', 'Government', 'Individual'], default: 'Cash' },
   city: { type: String, trim: true },

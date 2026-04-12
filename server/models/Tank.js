@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const TankSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   name: { type: String, required: true, trim: true },        // e.g. "Tank A (Petrol)"
   fuelType: { type: mongoose.Schema.Types.ObjectId, ref: 'FuelType', required: true },
   capacity: { type: Number, required: true },                 // Max capacity in Ltrs/Kg

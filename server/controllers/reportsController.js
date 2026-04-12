@@ -8,6 +8,7 @@ const Reading = require('../models/Reading');
 const Dip = require('../models/Dip');
 const CreditPayment = require('../models/CreditPayment');
 const SupplierPayment = require('../models/SupplierPayment');
+const mongoose = require('mongoose');
 
 // Helper: build a date filter from query params
 const dateRange = (q) => {
@@ -17,11 +18,14 @@ const dateRange = (q) => {
   return Object.keys(f).length ? { date: f } : {};
 };
 
+// Tenant filter for aggregations
+const tFilter = (req) => req.tenantId ? { tenant: new mongoose.Types.ObjectId(req.tenantId) } : {};
+const tQuery = (req) => req.tenantId ? { tenant: req.tenantId } : {};
+
 // ─── 1. Sales Report ─────────────────────────────────────────────
-// Aggregations: by fuel, by sale type, by shift, by customer, daily, hourly, top vehicles
 exports.salesReport = async (req, res) => {
   try {
-    const match = dateRange(req.query);
+    const match = { ...tFilter(req), ...dateRange(req.query) };
 
     const [byFuel, bySaleType, byShift, daily, topCustomers, totals] = await Promise.all([
       Sale.aggregate([
@@ -69,7 +73,7 @@ exports.salesReport = async (req, res) => {
 // ─── 2. Purchase Report ──────────────────────────────────────────
 exports.purchaseReport = async (req, res) => {
   try {
-    const match = dateRange(req.query);
+    const match = { ...tFilter(req), ...dateRange(req.query) };
 
     const [bySupplier, byFuel, byStatus, daily, totals] = await Promise.all([
       Purchase.aggregate([
@@ -110,13 +114,14 @@ exports.purchaseReport = async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };
 
-// ─── 3. Day Summary (everything that happened on one date) ───────
+// ─── 3. Day Summary ───────
 exports.daySummary = async (req, res) => {
   try {
+    const tf = tFilter(req);
     const dateStr = req.query.date || new Date().toISOString().slice(0, 10);
     const start = new Date(dateStr); start.setHours(0,0,0,0);
     const end = new Date(start); end.setDate(end.getDate() + 1);
-    const range = { date: { $gte: start, $lt: end } };
+    const range = { ...tf, date: { $gte: start, $lt: end } };
 
     const [sales, salesByShift, salesByFuel, purchases, expenses, readings, dips, creditPayments, supplierPayments] = await Promise.all([
       Sale.aggregate([{ $match: range }, { $group: { _id: null, amount: { $sum: '$amount' }, qty: { $sum: '$quantity' }, count: { $sum: 1 },
@@ -146,7 +151,6 @@ exports.daySummary = async (req, res) => {
     const cp = creditPayments[0] || { amount: 0, count: 0 };
     const sp = supplierPayments[0] || { amount: 0, count: 0 };
 
-    // Cash position: cash sales + credit collected - supplier paid - expenses
     const cashIn = s.cash + cp.amount;
     const cashOut = sp.amount + e.amount;
     const cashPosition = cashIn - cashOut;
@@ -162,13 +166,14 @@ exports.daySummary = async (req, res) => {
   } catch (err) { res.status(500).json({ success: false, message: err.message }); }
 };
 
-// ─── 4. Shift Report (per nozzle reading reconciliation) ─────────
+// ─── 4. Shift Report ─────────
 exports.shiftReport = async (req, res) => {
   try {
-    const match = dateRange(req.query);
+    const tq = tQuery(req);
+    const match = { ...tFilter(req), ...dateRange(req.query) };
     if (req.query.shift) match.shift = req.query.shift;
 
-    const readings = await Reading.find(match)
+    const readings = await Reading.find({ ...tq, ...dateRange(req.query), ...(req.query.shift ? { shift: req.query.shift } : {}) })
       .populate('nozzle', 'name')
       .populate('pump', 'name')
       .populate('fuelType', 'name code color unit')
@@ -184,7 +189,6 @@ exports.shiftReport = async (req, res) => {
       return a;
     }, { dispensed: 0, amount: 0, declared: 0, shortExcess: 0, testing: 0, count: readings.length });
 
-    // Group by operator
     const byOperator = {};
     readings.forEach(r => {
       const key = r.operator?.name || 'Unassigned';
@@ -203,10 +207,11 @@ exports.shiftReport = async (req, res) => {
 // ─── 5. Stock / Inventory Report ─────────────────────────────────
 exports.stockReport = async (req, res) => {
   try {
-    const tanks = await Tank.find().populate('fuelType', 'name code color unit currentRate').lean();
+    const tf = tFilter(req);
+    const tq = tQuery(req);
+    const tanks = await Tank.find(tq).populate('fuelType', 'name code color unit currentRate').lean();
 
-    // Compute period-level IN/OUT per tank
-    const match = dateRange(req.query);
+    const match = { ...tf, ...dateRange(req.query) };
     const tankIds = tanks.map(t => t._id);
 
     const purchasedAgg = await Purchase.aggregate([
@@ -262,13 +267,13 @@ exports.stockReport = async (req, res) => {
 // ─── 6. Credit Aging Report ──────────────────────────────────────
 exports.creditAging = async (req, res) => {
   try {
-    const customers = await Customer.find({ balance: { $gt: 0 } }).lean();
-    // Get oldest unpaid sale per customer to estimate aging
+    const tq = tQuery(req);
+    const customers = await Customer.find({ ...tq, balance: { $gt: 0 } }).lean();
     const now = new Date();
     const buckets = { current: 0, d30: 0, d60: 0, d90: 0, d90plus: 0 };
     const rows = [];
     for (const c of customers) {
-      const oldest = await Sale.findOne({ customer: c._id, saleType: 'credit' }).sort({ date: 1 }).lean();
+      const oldest = await Sale.findOne({ ...tq, customer: c._id, saleType: 'credit' }).sort({ date: 1 }).lean();
       const days = oldest ? Math.floor((now - new Date(oldest.date)) / 86400000) : 0;
       let bucket = 'current';
       if (days > 90) bucket = 'd90plus';
@@ -292,17 +297,17 @@ exports.creditAging = async (req, res) => {
 // ─── 7. Customer Statement ───────────────────────────────────────
 exports.customerStatement = async (req, res) => {
   try {
-    const customer = await Customer.findById(req.params.id).lean();
+    const tq = tQuery(req);
+    const customer = await Customer.findOne({ ...tq, _id: req.params.id }).lean();
     if (!customer) return res.status(404).json({ success: false, message: 'Customer not found' });
 
     const range = dateRange(req.query);
-    const customerFilter = (extra = {}) => ({ customer: customer._id, ...range, ...extra });
+    const customerFilter = (extra = {}) => ({ ...tq, customer: customer._id, ...range, ...extra });
 
     const sales = await Sale.find(customerFilter({ saleType: 'credit' }))
       .populate('fuelType', 'name unit').sort({ date: 1 }).lean();
     const payments = await CreditPayment.find(customerFilter()).sort({ date: 1 }).lean();
 
-    // Build ledger with running balance
     const entries = [
       ...sales.map(s => ({ kind: 'Sale', date: s.date, debit: s.amount, credit: 0,
         ref: s.invoiceNumber || s.vehicleNumber || '',
@@ -326,13 +331,14 @@ exports.customerStatement = async (req, res) => {
 // ─── 8. Supplier Statement ───────────────────────────────────────
 exports.supplierStatement = async (req, res) => {
   try {
-    const supplier = await Supplier.findById(req.params.id).lean();
+    const tq = tQuery(req);
+    const supplier = await Supplier.findOne({ ...tq, _id: req.params.id }).lean();
     if (!supplier) return res.status(404).json({ success: false, message: 'Supplier not found' });
 
     const range = dateRange(req.query);
-    const purchases = await Purchase.find({ supplier: supplier._id, ...range })
+    const purchases = await Purchase.find({ ...tq, supplier: supplier._id, ...range })
       .populate('fuelType', 'name unit').sort({ date: 1 }).lean();
-    const payments = await SupplierPayment.find({ supplier: supplier._id, ...range }).sort({ date: 1 }).lean();
+    const payments = await SupplierPayment.find({ ...tq, supplier: supplier._id, ...range }).sort({ date: 1 }).lean();
 
     const entries = [
       ...purchases.map(p => ({ kind: 'Purchase', date: p.date, debit: 0, credit: p.amount,
@@ -354,10 +360,11 @@ exports.supplierStatement = async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };
 
-// ─── 9. Tank Variance Report (dip analysis) ──────────────────────
+// ─── 9. Tank Variance Report ────────────────────────────────────
 exports.varianceReport = async (req, res) => {
   try {
-    const match = dateRange(req.query);
+    const tq = tQuery(req);
+    const match = { ...tq, ...dateRange(req.query) };
     const dips = await Dip.find(match).populate('tank', 'name').populate('fuelType', 'name unit').sort({ date: -1 }).lean();
 
     const byTank = {};
@@ -385,7 +392,8 @@ exports.varianceReport = async (req, res) => {
 // ─── 10. Expense Report ──────────────────────────────────────────
 exports.expenseReport = async (req, res) => {
   try {
-    const match = dateRange(req.query);
+    const match = { ...tFilter(req), ...dateRange(req.query) };
+    const tq = tQuery(req);
 
     const [byCategory, byMethod, daily, totals, recent] = await Promise.all([
       Expense.aggregate([
@@ -406,7 +414,7 @@ exports.expenseReport = async (req, res) => {
         { $match: match },
         { $group: { _id: null, amount: { $sum: '$amount' }, count: { $sum: 1 } } },
       ]),
-      Expense.find(match).sort({ date: -1 }).limit(50).lean(),
+      Expense.find({ ...tq, ...dateRange(req.query) }).sort({ date: -1 }).limit(50).lean(),
     ]);
 
     res.json({ success: true, data: {
@@ -419,7 +427,7 @@ exports.expenseReport = async (req, res) => {
 // ─── 11. Profitability by Fuel ───────────────────────────────────
 exports.fuelProfitability = async (req, res) => {
   try {
-    const match = dateRange(req.query);
+    const match = { ...tFilter(req), ...dateRange(req.query) };
 
     const sales = await Sale.aggregate([
       { $match: match },
@@ -458,16 +466,17 @@ exports.fuelProfitability = async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };
 
-// ─── 12. Monthly Trend (rolling 12 months) ───────────────────────
+// ─── 12. Monthly Trend ───────────────────────────────────────────
 exports.monthlyTrend = async (req, res) => {
   try {
+    const tf = tFilter(req);
     const months = parseInt(req.query.months) || 12;
     const start = new Date();
     start.setMonth(start.getMonth() - (months - 1));
     start.setDate(1); start.setHours(0,0,0,0);
 
     const grp = (Model) => Model.aggregate([
-      { $match: { date: { $gte: start } } },
+      { $match: { ...tf, date: { $gte: start } } },
       { $group: { _id: { y: { $year: '$date' }, m: { $month: '$date' } }, amount: { $sum: '$amount' } } },
       { $sort: { '_id.y': 1, '_id.m': 1 } },
     ]);

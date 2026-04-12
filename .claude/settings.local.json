@@ -13,7 +13,11 @@
       "Bash(node -c server/controllers/cashClosingController.js)",
       "Bash(node -c server/controllers/dashboardController.js)",
       "Bash(node -c server/routes/operations.js)",
-      "Bash(node -e ':*)"
+      "Bash(node -e ':*)",
+      "Bash(ls d:/fuelmaster-v3-hostinger/server/models/*.js)",
+      "Bash(npx vite:*)",
+      "Bash(ls node_modules/.bin/vite*)",
+      "Bash(node_modules/.bin/vite build:*)"
     ]
   }
 }

@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const SettingsSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   stationName: { type: String, default: 'My Filling Station' },
   brand: { type: String, default: 'PSO' },                    // PSO, Shell, Total, Attock, etc.
   dealerLicense: { type: String },

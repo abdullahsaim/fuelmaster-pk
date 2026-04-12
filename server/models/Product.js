@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const ProductSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   name: { type: String, required: true, trim: true },
   category: { type: String, enum: ['Engine Oil', 'Automotive', 'Motorcycle', 'Gear Oil', 'Coolant', 'Additive', 'Filter', 'Other'], required: true },
   brand: { type: String, trim: true },

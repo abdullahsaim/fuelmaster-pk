@@ -9,6 +9,7 @@ exports.getSales = async (req, res) => {
   try {
     const { fuelType, saleType, startDate, endDate, customer, shift, page = 1, limit = 50 } = req.query;
     const filter = {};
+    if (req.tenantId) filter.tenant = req.tenantId;
     if (fuelType) filter.fuelType = fuelType;
     if (saleType) filter.saleType = saleType;
     if (customer) filter.customer = customer;
@@ -39,6 +40,7 @@ exports.createSale = async (req, res) => {
     const { fuelType, tank, quantity, rate, saleType, customer, vehicleNumber, nozzle, shift, notes } = req.body;
     const amount = quantity * rate;
     const sale = await Sale.create({
+      tenant: req.tenantId,
       date: new Date(), fuelType, tank, nozzle, quantity, rate, amount,
       saleType, customer, vehicleNumber, shift, receivedBy: req.user._id, notes,
     });
@@ -46,6 +48,7 @@ exports.createSale = async (req, res) => {
     if (tank) {
       const t = await Tank.findByIdAndUpdate(tank, { $inc: { currentStock: -quantity } }, { new: true });
       await StockMovement.create({
+        tenant: req.tenantId,
         date: sale.date, tank, fuelType, type: 'OUT', quantity, source: 'sale',
         reference: sale._id, refModel: 'Sale', balanceAfter: t?.currentStock,
         createdBy: req.user._id, notes: `Sale ${saleType}`,
@@ -68,7 +71,9 @@ exports.createSale = async (req, res) => {
 // @route   GET /api/sales/:id
 exports.getSale = async (req, res) => {
   try {
-    const sale = await Sale.findById(req.params.id)
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const sale = await Sale.findOne(filter)
       .populate('fuelType').populate('customer').populate('nozzle').populate('tank');
     if (!sale) return res.status(404).json({ success: false, message: 'Sale not found' });
     res.json({ success: true, data: sale });
@@ -81,7 +86,9 @@ exports.getSale = async (req, res) => {
 // @route   DELETE /api/sales/:id
 exports.deleteSale = async (req, res) => {
   try {
-    const sale = await Sale.findById(req.params.id);
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const sale = await Sale.findOne(filter);
     if (!sale) return res.status(404).json({ success: false, message: 'Sale not found' });
     // Reverse stock and balance changes
     if (sale.tank) await Tank.findByIdAndUpdate(sale.tank, { $inc: { currentStock: sale.quantity } });
@@ -102,6 +109,7 @@ exports.getSalesSummary = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     const match = {};
+    if (req.tenantId) match.tenant = req.tenantId;
     if (startDate || endDate) {
       match.date = {};
       if (startDate) match.date.$gte = new Date(startDate);

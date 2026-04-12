@@ -1,5 +1,6 @@
 // Factory function for standard CRUD operations
 // Used by: suppliers, customers, employees, expenses, products, fuel types, tanks, nozzles
+// Tenant-aware: auto-filters by req.tenantId and auto-sets tenant on create
 
 const createCrudController = (Model, populateFields = '') => {
   return {
@@ -9,9 +10,14 @@ const createCrudController = (Model, populateFields = '') => {
         const { page = 1, limit = 100, sort = '-createdAt', search, ...filters } = req.query;
         const query = {};
 
+        // Tenant scoping (superadmin without _tenant sees all)
+        if (req.tenantId) {
+          query.tenant = req.tenantId;
+        }
+
         // Build dynamic filters
         Object.keys(filters).forEach(key => {
-          if (filters[key] && key !== 'page' && key !== 'limit' && key !== 'sort') {
+          if (filters[key] && key !== 'page' && key !== 'limit' && key !== 'sort' && key !== '_tenant') {
             query[key] = filters[key];
           }
         });
@@ -39,7 +45,10 @@ const createCrudController = (Model, populateFields = '') => {
     // GET one by ID
     getOne: async (req, res) => {
       try {
-        let query = Model.findById(req.params.id);
+        const filter = { _id: req.params.id };
+        if (req.tenantId) filter.tenant = req.tenantId;
+
+        let query = Model.findOne(filter);
         if (populateFields) {
           populateFields.split(' ').forEach(field => { query = query.populate(field); });
         }
@@ -54,6 +63,10 @@ const createCrudController = (Model, populateFields = '') => {
     // POST create
     create: async (req, res) => {
       try {
+        // Auto-set tenant
+        if (req.tenantId) {
+          req.body.tenant = req.tenantId;
+        }
         const doc = await Model.create(req.body);
         res.status(201).json({ success: true, data: doc });
       } catch (error) {
@@ -67,7 +80,10 @@ const createCrudController = (Model, populateFields = '') => {
     // PUT update
     update: async (req, res) => {
       try {
-        const doc = await Model.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+        const filter = { _id: req.params.id };
+        if (req.tenantId) filter.tenant = req.tenantId;
+
+        const doc = await Model.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
         if (!doc) return res.status(404).json({ success: false, message: 'Not found' });
         res.json({ success: true, data: doc });
       } catch (error) {
@@ -78,7 +94,10 @@ const createCrudController = (Model, populateFields = '') => {
     // DELETE
     remove: async (req, res) => {
       try {
-        const doc = await Model.findByIdAndDelete(req.params.id);
+        const filter = { _id: req.params.id };
+        if (req.tenantId) filter.tenant = req.tenantId;
+
+        const doc = await Model.findOneAndDelete(filter);
         if (!doc) return res.status(404).json({ success: false, message: 'Not found' });
         res.json({ success: true, message: 'Deleted successfully' });
       } catch (error) {

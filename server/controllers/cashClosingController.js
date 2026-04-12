@@ -3,13 +3,16 @@ const Sale = require('../models/Sale');
 const Expense = require('../models/Expense');
 const CreditPayment = require('../models/CreditPayment');
 const SupplierPayment = require('../models/SupplierPayment');
+const mongoose = require('mongoose');
+
+const tFilter = (req) => req.tenantId ? { tenant: new mongoose.Types.ObjectId(req.tenantId) } : {};
+const tQuery = (req) => req.tenantId ? { tenant: req.tenantId } : {};
 
 // @desc    Get all cash closings
-// @route   GET /api/cash-closing
 exports.getCashClosings = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    const filter = {};
+    const filter = { ...tQuery(req) };
     if (startDate || endDate) {
       filter.date = {};
       if (startDate) filter.date.$gte = new Date(startDate);
@@ -25,46 +28,38 @@ exports.getCashClosings = async (req, res) => {
 };
 
 // @desc    Auto-populate cash figures for a given date
-// @route   GET /api/cash-closing/populate?date=YYYY-MM-DD&shift=full
 exports.populateDay = async (req, res) => {
   try {
     const { date, shift } = req.query;
     if (!date) return res.status(400).json({ success: false, message: 'Date is required' });
 
+    const tf = tFilter(req);
+    const tq = tQuery(req);
     const dayStart = new Date(date);
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(dayStart);
     dayEnd.setDate(dayEnd.getDate() + 1);
 
-    const dateMatch = { date: { $gte: dayStart, $lt: dayEnd } };
+    const dateMatch = { ...tf, date: { $gte: dayStart, $lt: dayEnd } };
     const shiftMatch = shift && shift !== 'full' ? { shift } : {};
 
-    // Cash sales (saleType: cash)
     const cashSalesAgg = await Sale.aggregate([
       { $match: { ...dateMatch, ...shiftMatch, saleType: 'cash' } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
-
-    // Credit collected
     const creditAgg = await CreditPayment.aggregate([
-      { $match: { date: { $gte: dayStart, $lt: dayEnd }, method: 'Cash' } },
+      { $match: { ...dateMatch, method: 'Cash' } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
-
-    // Expenses (cash only)
     const expenseAgg = await Expense.aggregate([
       { $match: { ...dateMatch, paymentMethod: { $in: ['Cash', undefined, null] } } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
-
-    // Supplier payments (cash)
     const supplierAgg = await SupplierPayment.aggregate([
-      { $match: { date: { $gte: dayStart, $lt: dayEnd }, method: 'Cash' } },
+      { $match: { ...dateMatch, method: 'Cash' } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
-
-    // Get last closing's actual cash as today's opening
-    const lastClosing = await CashClosing.findOne({ date: { $lt: dayStart } }).sort({ date: -1 });
+    const lastClosing = await CashClosing.findOne({ ...tq, date: { $lt: dayStart } }).sort({ date: -1 });
 
     res.json({
       success: true,
@@ -82,22 +77,20 @@ exports.populateDay = async (req, res) => {
   }
 };
 
-// @desc    Create cash closing
-// @route   POST /api/cash-closing
 exports.createCashClosing = async (req, res) => {
   try {
-    const data = await CashClosing.create({ ...req.body, closedBy: req.user._id });
+    const data = await CashClosing.create({ ...req.body, tenant: req.tenantId, closedBy: req.user._id });
     res.status(201).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// @desc    Update cash closing
-// @route   PUT /api/cash-closing/:id
 exports.updateCashClosing = async (req, res) => {
   try {
-    const data = await CashClosing.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const data = await CashClosing.findOneAndUpdate(filter, req.body, { new: true, runValidators: true });
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
     res.json({ success: true, data });
   } catch (error) {
@@ -105,11 +98,11 @@ exports.updateCashClosing = async (req, res) => {
   }
 };
 
-// @desc    Delete cash closing
-// @route   DELETE /api/cash-closing/:id
 exports.deleteCashClosing = async (req, res) => {
   try {
-    const data = await CashClosing.findByIdAndDelete(req.params.id);
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const data = await CashClosing.findOneAndDelete(filter);
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
     res.json({ success: true, message: 'Deleted' });
   } catch (error) {

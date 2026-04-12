@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const PayrollSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
   month: { type: String, required: true },                     // "2026-04" format
   year: { type: Number, required: true },

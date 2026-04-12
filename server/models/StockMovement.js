@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 // Append-only ledger of all changes that affect tank/product stock.
 // Sources: 'purchase', 'sale', 'reading', 'dip-adjustment', 'transfer', 'manual'
 const StockMovementSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   date:       { type: Date, required: true, default: Date.now },
   tank:       { type: mongoose.Schema.Types.ObjectId, ref: 'Tank' },
   product:    { type: mongoose.Schema.Types.ObjectId, ref: 'Product' },

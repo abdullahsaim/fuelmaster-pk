@@ -13,6 +13,8 @@ const payrollRoutes = require('./routes/payroll');
 const dashboardRoutes = require('./routes/dashboard');
 const operationsRoutes = require('./routes/operations');
 const reportsRoutes = require('./routes/reports');
+const adminRoutes = require('./routes/admin');
+const subscriptionRoutes = require('./routes/subscription');
 const {
   suppliersRouter, customersRouter, employeesRouter, expensesRouter,
   fuelTypesRouter, tanksRouter, nozzlesRouter, productsRouter, settingsRouter,
@@ -27,22 +29,24 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 if (process.env.NODE_ENV === 'development') app.use(morgan('dev'));
 
-app.use('/api/auth',       authRoutes);
-app.use('/api/dashboard',  dashboardRoutes);
-app.use('/api/sales',      salesRoutes);
-app.use('/api/purchases',  purchaseRoutes);
-app.use('/api/payroll',    payrollRoutes);
-app.use('/api/suppliers',  suppliersRouter);
-app.use('/api/customers',  customersRouter);
-app.use('/api/employees',  employeesRouter);
-app.use('/api/expenses',   expensesRouter);
-app.use('/api/fuel-types', fuelTypesRouter);
-app.use('/api/tanks',      tanksRouter);
-app.use('/api/nozzles',    nozzlesRouter);
-app.use('/api/products',   productsRouter);
-app.use('/api/settings',   settingsRouter);
-app.use('/api',            operationsRoutes);
-app.use('/api/reports',    reportsRoutes);
+app.use('/api/auth',         authRoutes);
+app.use('/api/dashboard',    dashboardRoutes);
+app.use('/api/sales',        salesRoutes);
+app.use('/api/purchases',    purchaseRoutes);
+app.use('/api/payroll',      payrollRoutes);
+app.use('/api/suppliers',    suppliersRouter);
+app.use('/api/customers',    customersRouter);
+app.use('/api/employees',    employeesRouter);
+app.use('/api/expenses',     expensesRouter);
+app.use('/api/fuel-types',   fuelTypesRouter);
+app.use('/api/tanks',        tanksRouter);
+app.use('/api/nozzles',      nozzlesRouter);
+app.use('/api/products',     productsRouter);
+app.use('/api/settings',     settingsRouter);
+app.use('/api',              operationsRoutes);
+app.use('/api/reports',      reportsRoutes);
+app.use('/api/admin',        adminRoutes);
+app.use('/api/subscription', subscriptionRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, message: 'FuelMaster PK API running', version: '3.0.0', env: process.env.NODE_ENV });

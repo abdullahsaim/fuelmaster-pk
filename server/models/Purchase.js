@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const PurchaseSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   date: { type: Date, required: true, default: Date.now },
   supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier', required: true },
   fuelType: { type: mongoose.Schema.Types.ObjectId, ref: 'FuelType' },

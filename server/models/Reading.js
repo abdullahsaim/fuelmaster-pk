@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 // Per-shift nozzle meter reading. Each reading record represents a closed
 // shift for a single nozzle and is the source of truth for sales reconciliation.
 const ReadingSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   date:        { type: Date,   required: true, default: Date.now },
   shift:       { type: String, enum: ['day', 'night'], required: true },
   pump:        { type: mongoose.Schema.Types.ObjectId, ref: 'Pump' },

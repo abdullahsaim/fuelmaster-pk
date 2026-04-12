@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const SupplierSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   name: { type: String, required: true, trim: true },
   type: { type: String, enum: ['Fuel', 'Lubricant', 'Parts', 'Other'], default: 'Fuel' },
   city: { type: String, trim: true },

@@ -1,11 +1,10 @@
 const Checklist = require('../models/Checklist');
 
-// @desc    Get checklists
-// @route   GET /api/checklists
 exports.getChecklists = async (req, res) => {
   try {
     const { date, shift, type, startDate, endDate } = req.query;
     const filter = {};
+    if (req.tenantId) filter.tenant = req.tenantId;
     if (date) {
       const d = new Date(date);
       d.setHours(0, 0, 0, 0);
@@ -30,25 +29,22 @@ exports.getChecklists = async (req, res) => {
   }
 };
 
-// @desc    Create checklist with default items
-// @route   POST /api/checklists
 exports.createChecklist = async (req, res) => {
   try {
     const { date, shift, type, completedBy } = req.body;
     const items = req.body.items || Checklist.defaultItems(type);
-    const data = await Checklist.create({ date, shift, type, items, completedBy });
+    const data = await Checklist.create({ tenant: req.tenantId, date, shift, type, items, completedBy });
     res.status(201).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// @desc    Update checklist (check/uncheck items)
-// @route   PUT /api/checklists/:id
 exports.updateChecklist = async (req, res) => {
   try {
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
     const update = { ...req.body };
-    // Auto-set status based on items
     if (update.items) {
       const allChecked = update.items.every(i => i.checked);
       if (allChecked) update.status = 'Completed';
@@ -56,7 +52,7 @@ exports.updateChecklist = async (req, res) => {
     }
     if (update.status === 'Verified') update.verifiedBy = req.user._id;
 
-    const data = await Checklist.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true })
+    const data = await Checklist.findOneAndUpdate(filter, update, { new: true, runValidators: true })
       .populate('completedBy', 'name role')
       .populate('verifiedBy', 'name');
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
@@ -66,10 +62,11 @@ exports.updateChecklist = async (req, res) => {
   }
 };
 
-// @route   DELETE /api/checklists/:id
 exports.deleteChecklist = async (req, res) => {
   try {
-    await Checklist.findByIdAndDelete(req.params.id);
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    await Checklist.findOneAndDelete(filter);
     res.json({ success: true, message: 'Deleted' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

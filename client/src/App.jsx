@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.jsx';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
-import { dashboardAPI, salesAPI, purchasesAPI, suppliersAPI, customersAPI, employeesAPI, expensesAPI, payrollAPI, tanksAPI, nozzlesAPI, productsAPI, fuelTypesAPI, settingsAPI, readingsAPI, dipsAPI, creditPaymentsAPI, supplierPaymentsAPI, pumpsAPI, historyAPI, reportsAPI, cashClosingAPI, shiftHandoverAPI, attendanceAPI, tankTransferAPI, checklistAPI } from './utils/api.js';
+import { dashboardAPI, salesAPI, purchasesAPI, suppliersAPI, customersAPI, employeesAPI, expensesAPI, payrollAPI, tanksAPI, nozzlesAPI, productsAPI, fuelTypesAPI, settingsAPI, readingsAPI, dipsAPI, creditPaymentsAPI, supplierPaymentsAPI, pumpsAPI, historyAPI, reportsAPI, cashClosingAPI, shiftHandoverAPI, attendanceAPI, tankTransferAPI, checklistAPI, subscriptionAPI, adminAPI, authAPI } from './utils/api.js';
 import { PKR, fmtDate, daysAgo, today } from './utils/helpers.js';
 
 // ─── ICONS (inline SVG) ───
@@ -125,7 +125,7 @@ const Select = ({ label, value, onChange, options }) => (
 );
 
 // ─── LANDING PAGE ─────────────────────────────────────────────
-const LandingPage = ({ onLogin, onDemo }) => {
+const LandingPage = ({ onLogin, onDemo, onRegister }) => {
   const features = [
     { icon: I.dollar,  title: 'Sales & Cash Management', desc: 'Cash & credit sale entry with auto-calculated rates, customer balances, and shift tracking.', color: '#10b981' },
     { icon: I.cart,    title: 'Tanker / Purchase Receipts', desc: 'Record fuel purchases with tanker number, driver, ordered vs received, shortage tracking.', color: '#3b82f6' },
@@ -169,7 +169,8 @@ const LandingPage = ({ onLogin, onDemo }) => {
         </div>
         <div style={{ display:'flex', gap:10 }}>
           <button onClick={onDemo} style={{ padding:'10px 20px', background:'transparent', color:'#e2e8f0', border:'1px solid #1e2533', borderRadius:10, fontWeight:600, fontSize:13, cursor:'pointer' }}>Try Demo</button>
-          <button onClick={onLogin} style={{ padding:'10px 22px', background:'linear-gradient(135deg,#10b981,#059669)', color:'#fff', border:'none', borderRadius:10, fontWeight:700, fontSize:13, cursor:'pointer', boxShadow:'0 6px 16px rgba(16,185,129,0.3)' }}>Sign In</button>
+          <button onClick={onLogin} style={{ padding:'10px 22px', background:'transparent', color:'#e2e8f0', border:'1px solid #1e2533', borderRadius:10, fontWeight:600, fontSize:13, cursor:'pointer' }}>Sign In</button>
+          <button onClick={onRegister} style={{ padding:'10px 22px', background:'linear-gradient(135deg,#10b981,#059669)', color:'#fff', border:'none', borderRadius:10, fontWeight:700, fontSize:13, cursor:'pointer', boxShadow:'0 6px 16px rgba(16,185,129,0.3)' }}>Start Free Trial</button>
         </div>
       </nav>
 
@@ -309,14 +310,53 @@ const LandingPage = ({ onLogin, onDemo }) => {
         </div>
       </section>
 
+      {/* ── PRICING ── */}
+      <section id="pricing" style={{ padding:'80px 6vw' }}>
+        <div style={{ maxWidth:1200, margin:'0 auto' }}>
+          <div style={{ textAlign:'center', marginBottom:48 }}>
+            <div style={{ fontSize:11, color:'#10b981', fontWeight:700, textTransform:'uppercase', letterSpacing:2, marginBottom:10 }}>Pricing Plans</div>
+            <h2 style={{ fontSize:'clamp(28px,4vw,42px)', fontWeight:800, margin:'0 0 12px', letterSpacing:-0.8 }}>Simple, transparent pricing</h2>
+            <p style={{ fontSize:15, color:'#8892a4', margin:0 }}>Start free, upgrade as you grow. All plans include 14-day free trial.</p>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(260px,1fr))', gap:20 }}>
+            {[
+              { name:'Free', price:'0', desc:'For small stations getting started', color:'#8892a4', features:['2 Users','2 Tanks, 4 Nozzles','Sales & Purchases','Basic Dashboard','P&L Report'] },
+              { name:'Starter', price:'2,999', desc:'For growing stations with basic team', color:'#3b82f6', features:['5 Users','4 Tanks, 8 Nozzles','Readings & Dips','Credit Management','7 Reports','Quick Sale POS'] },
+              { name:'Professional', price:'5,999', desc:'Full features for professional stations', color:'#10b981', popular:true, features:['15 Users','10 Tanks, 20 Nozzles','All 24 Modules','Payroll & Attendance','Shift Handover','11 Reports','Tank Transfer'] },
+              { name:'Enterprise', price:'9,999', desc:'Unlimited for chains & multi-site', color:'#8b5cf6', features:['Unlimited Users','Unlimited Resources','All Features','All Reports','Priority Support','Custom Branding'] },
+            ].map(plan=>(
+              <div key={plan.name} style={{ ...card(plan.popular?'#10b98110':'#141820', plan.popular?'#10b98140':'#1e2533'), padding:32, position:'relative', display:'flex', flexDirection:'column' }}>
+                {plan.popular && <div style={{ position:'absolute', top:-1, left:'50%', transform:'translateX(-50%)', padding:'4px 16px', background:'#10b981', borderRadius:'0 0 8px 8px', fontSize:10, fontWeight:700, color:'#fff', textTransform:'uppercase', letterSpacing:1 }}>Most Popular</div>}
+                <div style={{ fontSize:11, color:plan.color, fontWeight:700, textTransform:'uppercase', letterSpacing:1.5, marginBottom:8 }}>{plan.name}</div>
+                <div style={{ display:'flex', alignItems:'baseline', gap:4, marginBottom:8 }}>
+                  <span style={{ fontSize:11, color:'#8892a4' }}>PKR</span>
+                  <span style={{ fontSize:36, fontWeight:800, color:'#e2e8f0', fontFamily:"'JetBrains Mono',monospace" }}>{plan.price}</span>
+                  {plan.price !== '0' && <span style={{ fontSize:12, color:'#8892a4' }}>/month</span>}
+                </div>
+                <p style={{ fontSize:12, color:'#8892a4', margin:'0 0 20px', lineHeight:1.5 }}>{plan.desc}</p>
+                <div style={{ flex:1 }}>
+                  {plan.features.map(f=><div key={f} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8, fontSize:13, color:'#c8d0dc' }}>
+                    <div style={{ width:14, height:14, color:'#10b981', flexShrink:0 }}>{I.check}</div>{f}
+                  </div>)}
+                </div>
+                <button onClick={onRegister} style={{ marginTop:20, width:'100%', padding:12, background:plan.popular?'linear-gradient(135deg,#10b981,#059669)':`${plan.color}15`, color:plan.popular?'#fff':plan.color, border:plan.popular?'none':`1px solid ${plan.color}35`, borderRadius:10, fontWeight:700, fontSize:13, cursor:'pointer' }}>
+                  {plan.price==='0'?'Get Started Free':'Start Free Trial'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── CTA ── */}
       <section style={{ padding:'60px 6vw 80px' }}>
         <div style={{ maxWidth:900, margin:'0 auto', textAlign:'center', ...card(), padding:60, background:'linear-gradient(135deg,#141820,#0c0f14)' }}>
           <h2 style={{ fontSize:'clamp(26px,4vw,38px)', fontWeight:800, margin:'0 0 14px', letterSpacing:-0.8 }}>Ready to digitize your filling station?</h2>
-          <p style={{ fontSize:15, color:'#8892a4', margin:'0 0 28px' }}>Try the live demo with sample data — no signup required.</p>
+          <p style={{ fontSize:15, color:'#8892a4', margin:'0 0 28px' }}>Start your 14-day free trial or try the live demo with sample data.</p>
           <div style={{ display:'flex', gap:14, justifyContent:'center', flexWrap:'wrap' }}>
-            <button onClick={onDemo} style={{ padding:'15px 32px', background:'linear-gradient(135deg,#10b981,#059669)', color:'#fff', border:'none', borderRadius:12, fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:'0 12px 30px rgba(16,185,129,0.3)' }}>Launch Live Demo</button>
-            <button onClick={onLogin} style={{ padding:'15px 32px', background:'transparent', color:'#e2e8f0', border:'1px solid #1e2533', borderRadius:12, fontWeight:700, fontSize:15, cursor:'pointer' }}>Sign In</button>
+            <button onClick={onRegister} style={{ padding:'15px 32px', background:'linear-gradient(135deg,#10b981,#059669)', color:'#fff', border:'none', borderRadius:12, fontWeight:700, fontSize:15, cursor:'pointer', boxShadow:'0 12px 30px rgba(16,185,129,0.3)' }}>Start Free Trial</button>
+            <button onClick={onDemo} style={{ padding:'15px 32px', background:'transparent', color:'#e2e8f0', border:'1px solid #1e2533', borderRadius:12, fontWeight:700, fontSize:15, cursor:'pointer' }}>Launch Live Demo</button>
+            <button onClick={onLogin} style={{ padding:'15px 32px', background:'transparent', color:'#8892a4', border:'1px solid #1e2533', borderRadius:12, fontWeight:600, fontSize:15, cursor:'pointer' }}>Sign In</button>
           </div>
         </div>
       </section>
@@ -336,7 +376,7 @@ const LandingPage = ({ onLogin, onDemo }) => {
 };
 
 // ─── LOGIN PAGE ───
-const LoginPage = ({ onBack }) => {
+const LoginPage = ({ onBack, onRegister }) => {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -378,9 +418,242 @@ const LoginPage = ({ onBack }) => {
           )}
         </div>
       </div>
+      {onRegister && <div style={{ marginTop:20, textAlign:'center' }}>
+        <span style={{ fontSize:12, color:'#8892a4' }}>Don't have an account? </span>
+        <button onClick={onRegister} style={{ background:'none', border:'none', color:'#10b981', fontSize:12, fontWeight:700, cursor:'pointer', textDecoration:'underline' }}>Register your station</button>
+      </div>}
     </div>
   </div>;
 };
+
+// ─── REGISTER PAGE ───
+const RegisterPage = ({ onBack }) => {
+  const { register } = useAuth();
+  const [form, setForm] = useState({ name:'', email:'', password:'', phone:'', stationName:'', city:'', brand:'Other' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const set = (k,v) => setForm(p=>({...p,[k]:v}));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault(); setError(''); setLoading(true);
+    try { await register(form); toast.success('Station registered! Welcome to FuelMaster.'); }
+    catch (err) { setError(err.response?.data?.message || 'Registration failed'); }
+    setLoading(false);
+  };
+
+  return <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'linear-gradient(135deg,#0c0f14,#1a1f2a,#0c0f14)', fontFamily:"'Outfit',sans-serif", padding:20 }}>
+    <button onClick={onBack} style={{ position:'absolute', top:24, left:24, padding:'8px 16px', background:'transparent', color:'#8892a4', border:'1px solid #1e2533', borderRadius:8, fontSize:12, fontWeight:600, cursor:'pointer' }}>← Back to Home</button>
+    <div style={{ width:480, padding:40, background:'#141820', borderRadius:20, border:'1px solid #1e2533' }}>
+      <div style={{ textAlign:'center', marginBottom:28 }}>
+        <div style={{ width:56, height:56, borderRadius:14, margin:'0 auto 14px', background:'linear-gradient(135deg,#10b981,#059669)', display:'flex', alignItems:'center', justifyContent:'center' }}><div style={{ width:28, height:28, color:'#fff' }}>{I.fuel}</div></div>
+        <h1 style={{ fontSize:22, fontWeight:800, color:'#e2e8f0', margin:'0 0 4px' }}>Register Your Station</h1>
+        <p style={{ fontSize:12, color:'#10b981', fontWeight:600, margin:0 }}>14-day free trial • No credit card required</p>
+      </div>
+      {error && <div style={{ padding:'10px 14px', background:'#ef444420', borderRadius:10, marginBottom:16, border:'1px solid #ef444440', color:'#ef4444', fontSize:13 }}>{error}</div>}
+      <form onSubmit={handleSubmit}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:14 }}>
+          <Input label="Your Name" value={form.name} onChange={v=>set('name',v)} required placeholder="Muhammad Ali"/>
+          <Input label="Phone" value={form.phone} onChange={v=>set('phone',v)} placeholder="03001234567"/>
+        </div>
+        <div style={{ marginBottom:14 }}><Input label="Email" value={form.email} onChange={v=>set('email',v)} type="email" required placeholder="you@example.com"/></div>
+        <div style={{ marginBottom:14 }}><Input label="Password" value={form.password} onChange={v=>set('password',v)} type="password" required placeholder="Min 6 characters"/></div>
+        <div style={{ marginBottom:14 }}><Input label="Station Name" value={form.stationName} onChange={v=>set('stationName',v)} required placeholder="Al-Madina Filling Station"/></div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:20 }}>
+          <Input label="City" value={form.city} onChange={v=>set('city',v)} placeholder="Lahore"/>
+          <Select label="Brand" value={form.brand} onChange={v=>set('brand',v)} options={[{value:'PSO',label:'PSO'},{value:'Shell',label:'Shell'},{value:'Total',label:'Total'},{value:'Attock',label:'Attock'},{value:'Hascol',label:'Hascol'},{value:'GO',label:'GO'},{value:'Byco',label:'Byco'},{value:'Other',label:'Other'}]}/>
+        </div>
+        <button type="submit" disabled={loading} style={{ width:'100%', padding:14, background:'linear-gradient(135deg,#10b981,#059669)', color:'#fff', border:'none', borderRadius:10, fontSize:15, fontWeight:700, cursor:'pointer' }}>{loading?'Creating your station...':'Start Free Trial'}</button>
+      </form>
+      <div style={{ marginTop:16, textAlign:'center' }}>
+        <span style={{ fontSize:12, color:'#8892a4' }}>Already have an account? </span>
+        <button onClick={onBack} style={{ background:'none', border:'none', color:'#10b981', fontSize:12, fontWeight:700, cursor:'pointer', textDecoration:'underline' }}>Sign In</button>
+      </div>
+    </div>
+  </div>;
+};
+
+// ─── SUPER ADMIN PANEL ───
+const AdminPanel = () => {
+  const [tenants, setTenants] = useState([]);
+  const [stats, setStats] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+
+  const load = () => { adminAPI.getTenants({ search }).then(r => { setTenants(r.data.data); setStats(r.data.stats || {}); setLoading(false); }).catch(() => setLoading(false)); };
+  useEffect(load, [search]);
+
+  const updateTenant = async (id, data) => {
+    try { await adminAPI.updateTenant(id, data); toast.success('Tenant updated'); load(); setShowModal(false); }
+    catch(e) { toast.error(e.response?.data?.message || 'Failed'); }
+  };
+
+  if (loading) return <Loader/>;
+  const planColors = { free:'#8892a4', starter:'#3b82f6', professional:'#10b981', enterprise:'#8b5cf6' };
+  const statusColors = { trial:'#f59e0b', active:'#10b981', past_due:'#ef4444', cancelled:'#8892a4', expired:'#ef4444' };
+
+  return <div>
+    <h1 style={{ fontSize:28, fontWeight:800, color:'#e2e8f0', margin:'0 0 4px' }}>Admin Panel</h1>
+    <p style={{ color:'#8892a4', fontSize:13, margin:'0 0 24px' }}>Manage all tenants and subscriptions</p>
+
+    {/* Stats */}
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:14, marginBottom:24 }}>
+      <StatCard icon={I.users} label="Total Tenants" value={stats.total || 0} color="#3b82f6"/>
+      <StatCard icon={I.check} label="Active" value={stats.activeCount || 0} color="#10b981"/>
+      <StatCard icon={I.clock} label="On Trial" value={stats.byStatus?.trial || 0} color="#f59e0b"/>
+      <StatCard icon={I.warn} label="Expired" value={(stats.byStatus?.expired || 0) + (stats.byStatus?.past_due || 0)} color="#ef4444"/>
+    </div>
+
+    {/* Search */}
+    <div style={{ marginBottom:20 }}>
+      <Input placeholder="Search tenants by name, city, email..." value={search} onChange={setSearch}/>
+    </div>
+
+    {/* Tenants Table */}
+    <DataTable columns={[
+      { key:'name', label:'Station', render:(v,r)=><div><div style={{ fontWeight:600 }}>{r.name}</div><div style={{ fontSize:11, color:'#8892a4' }}>{r.city || '—'} · {r.brand || '—'}</div></div> },
+      { key:'owner', label:'Owner', render:(v)=>v?.name || '—' },
+      { key:'plan', label:'Plan', render:(v)=><Badge text={v} color={planColors[v]||'#8892a4'}/> },
+      { key:'subscriptionStatus', label:'Status', render:(v)=><Badge text={v} color={statusColors[v]||'#8892a4'}/> },
+      { key:'userCount', label:'Users', align:'center' },
+      { key:'createdAt', label:'Created', render:(v)=>v?new Date(v).toLocaleDateString('en-PK',{day:'2-digit',month:'short',year:'2-digit'}):'—' },
+      { key:'_id', label:'Actions', render:(v,r)=><div style={{ display:'flex', gap:6 }}>
+        <button onClick={()=>{setSelected(r);setShowModal(true);}} style={{ padding:'4px 10px', background:'#3b82f615', border:'1px solid #3b82f630', borderRadius:6, color:'#3b82f6', fontSize:11, fontWeight:600, cursor:'pointer' }}>Manage</button>
+      </div> },
+    ]} data={tenants}/>
+
+    {/* Manage Tenant Modal */}
+    <Modal isOpen={showModal} onClose={()=>setShowModal(false)} title={`Manage: ${selected?.name || ''}`}>
+      {selected && <div>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, marginBottom:16 }}>
+          <div><div style={{ fontSize:11, color:'#8892a4', marginBottom:4 }}>Current Plan</div><Badge text={selected.plan} color={planColors[selected.plan]}/></div>
+          <div><div style={{ fontSize:11, color:'#8892a4', marginBottom:4 }}>Status</div><Badge text={selected.subscriptionStatus} color={statusColors[selected.subscriptionStatus]}/></div>
+          <div><div style={{ fontSize:11, color:'#8892a4', marginBottom:4 }}>Users</div><span style={{ color:'#e2e8f0', fontSize:14, fontWeight:600 }}>{selected.userCount || 0}</span></div>
+          <div><div style={{ fontSize:11, color:'#8892a4', marginBottom:4 }}>Owner</div><span style={{ color:'#e2e8f0', fontSize:13 }}>{selected.owner?.name || '—'}</span></div>
+        </div>
+        <div style={{ borderTop:'1px solid #1e2533', paddingTop:16, display:'flex', flexDirection:'column', gap:12 }}>
+          <Select label="Change Plan" value={selected.plan} onChange={v=>updateTenant(selected._id,{plan:v})} options={[{value:'free',label:'Free'},{value:'starter',label:'Starter'},{value:'professional',label:'Professional'},{value:'enterprise',label:'Enterprise'}]}/>
+          <Select label="Subscription Status" value={selected.subscriptionStatus} onChange={v=>updateTenant(selected._id,{subscriptionStatus:v})} options={[{value:'trial',label:'Trial'},{value:'active',label:'Active'},{value:'past_due',label:'Past Due'},{value:'cancelled',label:'Cancelled'},{value:'expired',label:'Expired'}]}/>
+          <div style={{ display:'flex', gap:10 }}>
+            <button onClick={()=>updateTenant(selected._id,{isActive:!selected.isActive})} style={{ flex:1, padding:10, background:selected.isActive?'#ef444415':'#10b98115', border:`1px solid ${selected.isActive?'#ef444435':'#10b98135'}`, borderRadius:8, color:selected.isActive?'#ef4444':'#10b981', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+              {selected.isActive?'Deactivate':'Activate'}
+            </button>
+          </div>
+        </div>
+      </div>}
+    </Modal>
+  </div>;
+};
+
+// ─── SUBSCRIPTION PAGE (for tenant owners) ───
+const SubscriptionPage = () => {
+  const { tenant } = useAuth();
+  const [sub, setSub] = useState(null);
+  const [packages, setPackages] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [users, setUsers] = useState([]);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [newUser, setNewUser] = useState({ name:'', email:'', password:'', role:'cashier', phone:'' });
+
+  useEffect(() => {
+    Promise.all([subscriptionAPI.getMy(), authAPI.getUsers()])
+      .then(([s, u]) => { setSub(s.data.data); setPackages(s.data.data.packages); setUsers(u.data.data || []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
+  const addUser = async (e) => {
+    e.preventDefault();
+    try { await authAPI.addUser(newUser); toast.success('User added'); setShowAddUser(false); setNewUser({ name:'',email:'',password:'',role:'cashier',phone:'' });
+      authAPI.getUsers().then(r=>setUsers(r.data.data||[]));
+    } catch(err) { toast.error(err.response?.data?.message||'Failed to add user'); }
+  };
+
+  const toggleUser = async (id, isActive) => {
+    try { await authAPI.updateUser(id, { isActive: !isActive }); toast.success('User updated');
+      authAPI.getUsers().then(r=>setUsers(r.data.data||[]));
+    } catch(err) { toast.error('Failed'); }
+  };
+
+  if (loading) return <Loader/>;
+  const t = sub?.tenant || {};
+  const pkg = packages?.[t.plan] || {};
+  const planColors = { free:'#8892a4', starter:'#3b82f6', professional:'#10b981', enterprise:'#8b5cf6' };
+  const statusColors = { trial:'#f59e0b', active:'#10b981', past_due:'#ef4444', cancelled:'#8892a4', expired:'#ef4444' };
+
+  return <div>
+    <h1 style={{ fontSize:28, fontWeight:800, color:'#e2e8f0', margin:'0 0 4px' }}>Subscription & Team</h1>
+    <p style={{ color:'#8892a4', fontSize:13, margin:'0 0 24px' }}>Manage your plan, station profile, and team members</p>
+
+    {/* Plan Overview */}
+    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))', gap:14, marginBottom:28 }}>
+      <div style={{ background:'#141820', borderRadius:14, padding:24, border:'1px solid #1e2533' }}>
+        <div style={{ fontSize:11, color:'#8892a4', marginBottom:8, textTransform:'uppercase', fontWeight:600, letterSpacing:0.5 }}>Current Plan</div>
+        <Badge text={t.plan?.toUpperCase() || 'FREE'} color={planColors[t.plan]||'#8892a4'}/>
+        <div style={{ fontSize:24, fontWeight:800, color:'#e2e8f0', marginTop:10, fontFamily:"'JetBrains Mono',monospace" }}>PKR {(pkg.price||0).toLocaleString()}<span style={{ fontSize:12, color:'#8892a4', fontWeight:400 }}>/mo</span></div>
+      </div>
+      <div style={{ background:'#141820', borderRadius:14, padding:24, border:'1px solid #1e2533' }}>
+        <div style={{ fontSize:11, color:'#8892a4', marginBottom:8, textTransform:'uppercase', fontWeight:600, letterSpacing:0.5 }}>Status</div>
+        <Badge text={t.subscriptionStatus||'trial'} color={statusColors[t.subscriptionStatus]||'#f59e0b'}/>
+        {t.subscriptionStatus === 'trial' && t.trialEndsAt && <div style={{ fontSize:12, color:'#f59e0b', marginTop:10 }}>Trial ends: {new Date(t.trialEndsAt).toLocaleDateString('en-PK')}</div>}
+        {t.subscriptionEndDate && t.subscriptionStatus !== 'trial' && <div style={{ fontSize:12, color:'#8892a4', marginTop:10 }}>Renews: {new Date(t.subscriptionEndDate).toLocaleDateString('en-PK')}</div>}
+      </div>
+      <div style={{ background:'#141820', borderRadius:14, padding:24, border:'1px solid #1e2533' }}>
+        <div style={{ fontSize:11, color:'#8892a4', marginBottom:8, textTransform:'uppercase', fontWeight:600, letterSpacing:0.5 }}>Team</div>
+        <div style={{ fontSize:24, fontWeight:800, color:'#e2e8f0', fontFamily:"'JetBrains Mono',monospace" }}>{users.length} <span style={{ fontSize:14, color:'#8892a4', fontWeight:400 }}>/ {pkg.maxUsers || '?'}</span></div>
+        <div style={{ fontSize:12, color:'#8892a4', marginTop:4 }}>users</div>
+      </div>
+    </div>
+
+    {/* Users */}
+    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+      <h2 style={{ fontSize:18, fontWeight:700, color:'#e2e8f0', margin:0 }}>Team Members</h2>
+      <Btn onClick={()=>setShowAddUser(true)} icon={I.plus}>Add User</Btn>
+    </div>
+    <DataTable columns={[
+      { key:'name', label:'Name', render:(v,r)=><div><div style={{ fontWeight:600 }}>{r.name}</div><div style={{ fontSize:11, color:'#8892a4' }}>{r.email}</div></div> },
+      { key:'role', label:'Role', render:v=><Badge text={v} color={v==='owner'?'#10b981':v==='manager'?'#3b82f6':'#f59e0b'}/> },
+      { key:'isActive', label:'Status', render:v=><Badge text={v?'Active':'Inactive'} color={v?'#10b981':'#ef4444'}/> },
+      { key:'lastLogin', label:'Last Login', render:v=>v?new Date(v).toLocaleDateString('en-PK'):'Never' },
+      { key:'_id', label:'', render:(v,r)=>r.role!=='owner'?<button onClick={()=>toggleUser(r._id,r.isActive)} style={{ padding:'4px 10px', background:r.isActive?'#ef444415':'#10b98115', border:`1px solid ${r.isActive?'#ef444430':'#10b98130'}`, borderRadius:6, color:r.isActive?'#ef4444':'#10b981', fontSize:11, fontWeight:600, cursor:'pointer' }}>{r.isActive?'Deactivate':'Activate'}</button>:null },
+    ]} data={users}/>
+
+    {/* Add User Modal */}
+    <Modal isOpen={showAddUser} onClose={()=>setShowAddUser(false)} title="Add Team Member">
+      <form onSubmit={addUser}>
+        <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+          <Input label="Name" value={newUser.name} onChange={v=>setNewUser(p=>({...p,name:v}))} required/>
+          <Input label="Email" value={newUser.email} onChange={v=>setNewUser(p=>({...p,email:v}))} type="email" required/>
+          <Input label="Password" value={newUser.password} onChange={v=>setNewUser(p=>({...p,password:v}))} type="password" required placeholder="Min 6 characters"/>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:14 }}>
+            <Select label="Role" value={newUser.role} onChange={v=>setNewUser(p=>({...p,role:v}))} options={[{value:'manager',label:'Manager'},{value:'cashier',label:'Cashier'},{value:'operator',label:'Operator'}]}/>
+            <Input label="Phone" value={newUser.phone} onChange={v=>setNewUser(p=>({...p,phone:v}))}/>
+          </div>
+        </div>
+        <div style={{ marginTop:20 }}><Btn type="submit">Add User</Btn></div>
+      </form>
+    </Modal>
+
+    {/* Available Plans */}
+    {packages && <div style={{ marginTop:36 }}>
+      <h2 style={{ fontSize:18, fontWeight:700, color:'#e2e8f0', margin:'0 0 16px' }}>Available Plans</h2>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:14 }}>
+        {Object.entries(packages).map(([key,p])=>(
+          <div key={key} style={{ background:key===t.plan?'#10b98110':'#141820', borderRadius:14, padding:20, border:`1px solid ${key===t.plan?'#10b98140':'#1e2533'}` }}>
+            <div style={{ fontSize:11, color:planColors[key]||'#8892a4', fontWeight:700, textTransform:'uppercase', letterSpacing:1 }}>{p.name}</div>
+            <div style={{ fontSize:22, fontWeight:800, color:'#e2e8f0', margin:'6px 0', fontFamily:"'JetBrains Mono',monospace" }}>PKR {p.price?.toLocaleString()}<span style={{ fontSize:11, color:'#8892a4', fontWeight:400 }}>/mo</span></div>
+            <div style={{ fontSize:11, color:'#8892a4', marginBottom:10 }}>{p.description}</div>
+            <div style={{ fontSize:11, color:'#8892a4' }}>{p.maxUsers} users · {p.maxTanks} tanks · {p.features?.length === 1 && p.features[0]==='*' ? 'All features' : `${p.features?.length} features`}</div>
+            {key===t.plan && <div style={{ marginTop:10 }}><Badge text="Current Plan" color="#10b981"/></div>}
+          </div>
+        ))}
+      </div>
+    </div>}
+  </div>;
+};
+
+// ─── USER MANAGEMENT PAGE ───
+const UsersPage = () => <SubscriptionPage/>;
 
 // ─── DASHBOARD (enhanced with alerts, cash position, quick actions) ───
 const DashboardPage = ({ onNavigate }) => {
@@ -2779,29 +3052,31 @@ const ChecklistPage = () => {
 // ─── NAV & LAYOUT ───
 const NAV = [
   { id:'dashboard', label:'Dashboard', icon:I.dash },
-  { id:'quickSale', label:'Quick Sale (POS)', icon:I.zap },
-  { id:'sales', label:'Sales', icon:I.dollar },
-  { id:'purchases', label:'Purchases', icon:I.cart },
-  { id:'readings', label:'Shift Readings', icon:I.gauge },
-  { id:'shiftHandover', label:'Shift Handover', icon:I.swap },
-  { id:'dips', label:'Tank Dips', icon:I.drop },
-  { id:'stock', label:'Stock', icon:I.box },
-  { id:'pumps', label:'Pumps & Tanks', icon:I.pump },
-  { id:'tankTransfer', label:'Tank Transfer', icon:I.swap },
-  { id:'credit', label:'Credit / Payments', icon:I.card },
-  { id:'supplierPay', label:'Supplier Payments', icon:I.money },
-  { id:'suppliers', label:'Suppliers', icon:I.truck },
-  { id:'customers', label:'Customers', icon:I.users },
-  { id:'employees', label:'Employees', icon:I.user },
-  { id:'attendance', label:'Attendance', icon:I.clock },
+  { id:'quickSale', label:'Quick Sale (POS)', icon:I.zap, feature:'quick_sale' },
+  { id:'sales', label:'Sales', icon:I.dollar, feature:'sales' },
+  { id:'purchases', label:'Purchases', icon:I.cart, feature:'purchases' },
+  { id:'readings', label:'Shift Readings', icon:I.gauge, feature:'readings' },
+  { id:'shiftHandover', label:'Shift Handover', icon:I.swap, feature:'shift_handover' },
+  { id:'dips', label:'Tank Dips', icon:I.drop, feature:'dips' },
+  { id:'stock', label:'Stock', icon:I.box, feature:'stock' },
+  { id:'pumps', label:'Pumps & Tanks', icon:I.pump, feature:'pumps' },
+  { id:'tankTransfer', label:'Tank Transfer', icon:I.swap, feature:'tank_transfer' },
+  { id:'credit', label:'Credit / Payments', icon:I.card, feature:'credit' },
+  { id:'supplierPay', label:'Supplier Payments', icon:I.money, feature:'supplier_payments' },
+  { id:'suppliers', label:'Suppliers', icon:I.truck, feature:'suppliers' },
+  { id:'customers', label:'Customers', icon:I.users, feature:'customers' },
+  { id:'employees', label:'Employees', icon:I.user, feature:'employees' },
+  { id:'attendance', label:'Attendance', icon:I.clock, feature:'attendance' },
   { id:'performance', label:'Performance', icon:I.target },
-  { id:'payroll', label:'Payroll', icon:I.wallet },
-  { id:'expenses', label:'Expenses', icon:I.receipt },
-  { id:'cashClosing', label:'Cash Closing', icon:I.money },
-  { id:'checklist', label:'Checklists', icon:I.clipboard },
-  { id:'history', label:'History', icon:I.history },
-  { id:'reports', label:'Reports', icon:I.chart },
-  { id:'settings', label:'Settings', icon:I.settings },
+  { id:'payroll', label:'Payroll', icon:I.wallet, feature:'payroll' },
+  { id:'expenses', label:'Expenses', icon:I.receipt, feature:'expenses' },
+  { id:'cashClosing', label:'Cash Closing', icon:I.money, feature:'cash_closing' },
+  { id:'checklist', label:'Checklists', icon:I.clipboard, feature:'checklist' },
+  { id:'history', label:'History', icon:I.history, feature:'history' },
+  { id:'reports', label:'Reports', icon:I.chart, feature:'reports' },
+  { id:'subscription', label:'Subscription', icon:I.card, ownerOnly:true },
+  { id:'settings', label:'Settings', icon:I.settings, feature:'settings' },
+  { id:'admin', label:'Admin Panel', icon:I.settings, superadminOnly:true },
 ];
 
 const PAGES = {
@@ -2828,16 +3103,19 @@ const PAGES = {
   checklist:ChecklistPage,
   history:HistoryPage,
   reports:ReportsPage,
+  subscription:SubscriptionPage,
   settings:SettingsPage,
+  admin:AdminPanel,
 };
 
 const AppLayout = () => {
-  const { user, loading, logout, login } = useAuth();
+  const { user, tenant, loading, logout, login, hasFeature, isSuperAdmin } = useAuth();
   const [page, setPage] = useState('dashboard');
   const [collapsed, setCollapsed] = useState(false);
-  const [publicView, setPublicView] = useState('landing'); // 'landing' | 'login'
+  const [publicView, setPublicView] = useState('landing'); // 'landing' | 'login' | 'register'
   const [alerts, setAlerts] = useState([]);
   const [showAlerts, setShowAlerts] = useState(false);
+  const [subscriptionExpired, setSubscriptionExpired] = useState(false);
 
   // Fetch alerts periodically
   useEffect(() => {
@@ -2846,15 +3124,34 @@ const AppLayout = () => {
       dashboardAPI.get().then(r => setAlerts(r.data.data?.alerts || [])).catch(() => {});
     };
     fetchAlerts();
-    const interval = setInterval(fetchAlerts, 120000); // every 2 min
+    const interval = setInterval(fetchAlerts, 120000);
     return () => clearInterval(interval);
   }, [user]);
 
+  // Listen for subscription expired events
+  useEffect(() => {
+    const handler = () => setSubscriptionExpired(true);
+    window.addEventListener('subscription-expired', handler);
+    return () => window.removeEventListener('subscription-expired', handler);
+  }, []);
+
+  // Filter nav items based on role and features
+  const visibleNav = NAV.filter(n => {
+    if (n.superadminOnly && !isSuperAdmin) return false;
+    if (n.ownerOnly && user?.role !== 'owner' && !isSuperAdmin) return false;
+    if (n.feature && !hasFeature(n.feature)) return false;
+    // Hide admin for non-superadmin
+    if (n.id === 'admin' && !isSuperAdmin) return false;
+    return true;
+  });
+
   if (loading) return <Loader/>;
   if (!user) {
-    if (publicView === 'login') return <LoginPage onBack={()=>setPublicView('landing')}/>;
+    if (publicView === 'register') return <RegisterPage onBack={()=>setPublicView('login')}/>;
+    if (publicView === 'login') return <LoginPage onBack={()=>setPublicView('landing')} onRegister={()=>setPublicView('register')}/>;
     return <LandingPage
       onLogin={()=>setPublicView('login')}
+      onRegister={()=>setPublicView('register')}
       onDemo={async ()=>{
         try { await login('owner@fuelmaster.pk','admin123'); }
         catch(e) { setPublicView('login'); }
@@ -2871,16 +3168,19 @@ const AppLayout = () => {
         {!collapsed && <div><div style={{ fontSize:15, fontWeight:800, color:'#e2e8f0' }}>FuelMaster</div><div style={{ fontSize:9, color:'#10b981', fontWeight:600, textTransform:'uppercase', letterSpacing:1.5 }}>PK Edition</div></div>}
       </div>
       <nav style={{ flex:1, overflow:'auto', padding:'12px 10px' }}>
-        {NAV.map(n=><button key={n.id} onClick={()=>setPage(n.id)} style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:collapsed?'10px 16px':'10px 14px', marginBottom:2, borderRadius:8, border:'none', background:page===n.id?'#10b98118':'transparent', color:page===n.id?'#10b981':'#8892a4', cursor:'pointer', fontSize:13, fontWeight:page===n.id?600:500, justifyContent:collapsed?'center':'flex-start', position:'relative' }}>
+        {visibleNav.map(n=><button key={n.id} onClick={()=>setPage(n.id)} style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:collapsed?'10px 16px':'10px 14px', marginBottom:2, borderRadius:8, border:'none', background:page===n.id?'#10b98118':'transparent', color:page===n.id?'#10b981':'#8892a4', cursor:'pointer', fontSize:13, fontWeight:page===n.id?600:500, justifyContent:collapsed?'center':'flex-start', position:'relative' }}>
           {page===n.id && <div style={{ position:'absolute', left:0, width:3, height:24, background:'#10b981', borderRadius:'0 3px 3px 0' }}/>}
           <div style={{ width:20, height:20, flexShrink:0 }}>{n.icon}</div>
           {!collapsed && <span>{n.label}</span>}
         </button>)}
       </nav>
       <div style={{ padding:12, borderTop:'1px solid #1e2533' }}>
-        {!collapsed && <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12, padding:'8px 10px' }}>
-          <div style={{ width:34, height:34, borderRadius:8, background:'linear-gradient(135deg,#10b981,#3b82f6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#fff', flexShrink:0 }}>{user.name?.slice(0,2).toUpperCase()}</div>
-          <div><div style={{ fontSize:12, fontWeight:600, color:'#e2e8f0' }}>{user.name}</div><div style={{ fontSize:10, color:'#8892a4', textTransform:'capitalize' }}>{user.role}</div></div>
+        {!collapsed && <div style={{ marginBottom:12, padding:'8px 10px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:6 }}>
+            <div style={{ width:34, height:34, borderRadius:8, background:'linear-gradient(135deg,#10b981,#3b82f6)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#fff', flexShrink:0 }}>{user.name?.slice(0,2).toUpperCase()}</div>
+            <div><div style={{ fontSize:12, fontWeight:600, color:'#e2e8f0' }}>{user.name}</div><div style={{ fontSize:10, color:'#8892a4', textTransform:'capitalize' }}>{user.role}</div></div>
+          </div>
+          {tenant && <div style={{ fontSize:10, color:'#4a5568', padding:'4px 8px', background:'#0c0f14', borderRadius:6, marginTop:4 }}>{tenant.name} · <span style={{ color:{free:'#8892a4',starter:'#3b82f6',professional:'#10b981',enterprise:'#8b5cf6'}[tenant.plan]||'#8892a4', fontWeight:600, textTransform:'uppercase' }}>{tenant.plan}</span></div>}
         </div>}
         <button onClick={logout} style={{ width:'100%', display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:8, background:'#ef444415', border:'1px solid #ef444430', borderRadius:8, color:'#ef4444', fontSize:11, fontWeight:600, cursor:'pointer' }}>
           <div style={{ width:14, height:14 }}>{I.logout}</div>{!collapsed && 'Logout'}
@@ -2915,7 +3215,20 @@ const AppLayout = () => {
           <div style={{ fontSize:12, color:'#8892a4' }}>{new Date().toLocaleDateString('en-PK',{weekday:'long',day:'2-digit',month:'short',year:'numeric'})}</div>
         </div>
       </header>
-      <div style={{ flex:1, padding:28, overflow:'auto' }}><Page {...pageProps}/></div>
+      <div style={{ flex:1, padding:28, overflow:'auto' }}>
+        {subscriptionExpired && <div style={{ padding:'14px 20px', background:'#ef444415', border:'1px solid #ef444435', borderRadius:12, marginBottom:20, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ width:18, height:18, color:'#ef4444' }}>{I.warn}</div>
+            <span style={{ color:'#ef4444', fontSize:13, fontWeight:600 }}>Your subscription has expired. Please renew to continue using all features.</span>
+          </div>
+          <button onClick={()=>setPage('subscription')} style={{ padding:'6px 14px', background:'#ef4444', color:'#fff', border:'none', borderRadius:6, fontSize:12, fontWeight:600, cursor:'pointer' }}>Renew Now</button>
+        </div>}
+        {tenant?.subscriptionStatus==='trial' && tenant?.trialEndsAt && <div style={{ padding:'10px 20px', background:'#f59e0b10', border:'1px solid #f59e0b30', borderRadius:10, marginBottom:16, display:'flex', alignItems:'center', gap:10, fontSize:12 }}>
+          <div style={{ width:14, height:14, color:'#f59e0b' }}>{I.clock}</div>
+          <span style={{ color:'#f59e0b' }}>Free trial · Ends {new Date(tenant.trialEndsAt).toLocaleDateString('en-PK',{day:'2-digit',month:'short',year:'numeric'})}</span>
+        </div>}
+        <Page {...pageProps}/>
+      </div>
     </main>
     {/* Click outside to close alerts */}
     {showAlerts && <div onClick={()=>setShowAlerts(false)} style={{ position:'fixed', inset:0, zIndex:9 }}/>}

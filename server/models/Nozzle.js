@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const NozzleSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   name: { type: String, required: true, trim: true },         // e.g. "Nozzle 1-A"
   tank: { type: mongoose.Schema.Types.ObjectId, ref: 'Tank', required: true },
   status: { type: String, enum: ['active', 'inactive', 'maintenance'], default: 'active' },

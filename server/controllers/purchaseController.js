@@ -7,6 +7,7 @@ exports.getPurchases = async (req, res) => {
   try {
     const { supplier, status, startDate, endDate, page = 1, limit = 50 } = req.query;
     const filter = {};
+    if (req.tenantId) filter.tenant = req.tenantId;
     if (supplier) filter.supplier = supplier;
     if (status) filter.status = status;
     if (startDate || endDate) {
@@ -34,6 +35,7 @@ exports.createPurchase = async (req, res) => {
       invoiceNumber, gatePassNumber, receivedQuantity, status, notes } = req.body;
     const amount = quantity * rate;
     const purchase = await Purchase.create({
+      tenant: req.tenantId,
       date: new Date(), supplier, fuelType, tank, quantity, rate, amount,
       tankerNumber, driverName, driverPhone, invoiceNumber, gatePassNumber,
       receivedQuantity: receivedQuantity || quantity, status: status || 'Received',
@@ -44,6 +46,7 @@ exports.createPurchase = async (req, res) => {
       const qty = receivedQuantity || quantity;
       const t = await Tank.findByIdAndUpdate(tank, { $inc: { currentStock: qty } }, { new: true });
       await StockMovement.create({
+        tenant: req.tenantId,
         date: purchase.date, tank, fuelType, type: 'IN', quantity: qty, source: 'purchase',
         reference: purchase._id, refModel: 'Purchase', balanceAfter: t?.currentStock,
         createdBy: req.user._id, notes: `Purchase from supplier`,
@@ -61,7 +64,9 @@ exports.createPurchase = async (req, res) => {
 
 exports.updatePurchase = async (req, res) => {
   try {
-    const purchase = await Purchase.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const purchase = await Purchase.findOneAndUpdate(filter, req.body, { new: true, runValidators: true })
       .populate('supplier', 'name type').populate('fuelType', 'name code color');
     if (!purchase) return res.status(404).json({ success: false, message: 'Purchase not found' });
     res.json({ success: true, data: purchase });
@@ -72,7 +77,9 @@ exports.updatePurchase = async (req, res) => {
 
 exports.deletePurchase = async (req, res) => {
   try {
-    const purchase = await Purchase.findById(req.params.id);
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const purchase = await Purchase.findOne(filter);
     if (!purchase) return res.status(404).json({ success: false, message: 'Purchase not found' });
     // Reverse stock and balance
     if (purchase.tank) await Tank.findByIdAndUpdate(purchase.tank, { $inc: { currentStock: -(purchase.receivedQuantity || purchase.quantity) } });
@@ -89,6 +96,7 @@ exports.getPurchaseSummary = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     const match = {};
+    if (req.tenantId) match.tenant = req.tenantId;
     if (startDate || endDate) {
       match.date = {};
       if (startDate) match.date.$gte = new Date(startDate);

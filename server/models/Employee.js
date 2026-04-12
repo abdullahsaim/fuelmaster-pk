@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const EmployeeSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   name: { type: String, required: true, trim: true },
   cnic: { type: String, required: true, unique: true, trim: true },   // 35202-1234567-1
   fatherName: { type: String, trim: true },

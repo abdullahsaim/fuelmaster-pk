@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 // A payment received from a credit customer to settle outstanding balance.
 const CreditPaymentSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   date:          { type: Date, required: true, default: Date.now },
   customer:      { type: mongoose.Schema.Types.ObjectId, ref: 'Customer', required: true },
   amount:        { type: Number, required: true },

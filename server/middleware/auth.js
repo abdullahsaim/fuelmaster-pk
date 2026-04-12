@@ -25,6 +25,8 @@ const protect = async (req, res, next) => {
 // Role-based access
 const authorize = (...roles) => {
   return (req, res, next) => {
+    // Superadmin bypasses all role checks
+    if (req.user.role === 'superadmin') return next();
     if (!roles.includes(req.user.role)) {
       return res.status(403).json({
         success: false,

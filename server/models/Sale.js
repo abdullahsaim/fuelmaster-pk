@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const SaleSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   date: { type: Date, required: true, default: Date.now },
   shift: { type: String, enum: ['day', 'night'], required: true },
   fuelType: { type: mongoose.Schema.Types.ObjectId, ref: 'FuelType', required: true },

@@ -1,12 +1,11 @@
 const Attendance = require('../models/Attendance');
 const Employee = require('../models/Employee');
 
-// @desc    Get attendance records
-// @route   GET /api/attendance
 exports.getAttendance = async (req, res) => {
   try {
     const { date, startDate, endDate, employee } = req.query;
     const filter = {};
+    if (req.tenantId) filter.tenant = req.tenantId;
     if (date) {
       const d = new Date(date);
       d.setHours(0, 0, 0, 0);
@@ -29,8 +28,6 @@ exports.getAttendance = async (req, res) => {
   }
 };
 
-// @desc    Mark attendance for a date (bulk — all employees)
-// @route   POST /api/attendance/bulk
 exports.bulkMark = async (req, res) => {
   try {
     const { date, records } = req.body;
@@ -38,18 +35,18 @@ exports.bulkMark = async (req, res) => {
 
     const results = [];
     for (const rec of records) {
-      const existing = await Attendance.findOne({ date: new Date(date), employee: rec.employee });
+      const existing = await Attendance.findOne({ tenant: req.tenantId, date: new Date(date), employee: rec.employee });
       if (existing) {
         Object.assign(existing, rec, { markedBy: req.user._id });
         await existing.save();
         results.push(existing);
       } else {
-        const att = await Attendance.create({ ...rec, date: new Date(date), markedBy: req.user._id });
+        const att = await Attendance.create({ ...rec, tenant: req.tenantId, date: new Date(date), markedBy: req.user._id });
         results.push(att);
       }
     }
 
-    const populated = await Attendance.find({ date: new Date(date) })
+    const populated = await Attendance.find({ tenant: req.tenantId, date: new Date(date) })
       .populate('employee', 'name role shift cnic');
     res.status(201).json({ success: true, count: populated.length, data: populated });
   } catch (error) {
@@ -57,8 +54,6 @@ exports.bulkMark = async (req, res) => {
   }
 };
 
-// @desc    Get monthly attendance summary for all employees
-// @route   GET /api/attendance/summary?month=2026-04
 exports.monthlySummary = async (req, res) => {
   try {
     const { month } = req.query;
@@ -69,8 +64,13 @@ exports.monthlySummary = async (req, res) => {
     const end = new Date(year, m, 0, 23, 59, 59);
     const totalDays = new Date(year, m, 0).getDate();
 
-    const employees = await Employee.find({ status: 'Active' }).select('name role shift salary');
-    const attendance = await Attendance.find({ date: { $gte: start, $lte: end } });
+    const empFilter = { status: 'Active' };
+    if (req.tenantId) empFilter.tenant = req.tenantId;
+    const employees = await Employee.find(empFilter).select('name role shift salary');
+
+    const attFilter = { date: { $gte: start, $lte: end } };
+    if (req.tenantId) attFilter.tenant = req.tenantId;
+    const attendance = await Attendance.find(attFilter);
 
     const summary = employees.map(emp => {
       const records = attendance.filter(a => a.employee.toString() === emp._id.toString());
@@ -93,11 +93,11 @@ exports.monthlySummary = async (req, res) => {
   }
 };
 
-// @desc    Delete single attendance record
-// @route   DELETE /api/attendance/:id
 exports.deleteAttendance = async (req, res) => {
   try {
-    await Attendance.findByIdAndDelete(req.params.id);
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    await Attendance.findOneAndDelete(filter);
     res.json({ success: true, message: 'Deleted' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

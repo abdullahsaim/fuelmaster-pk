@@ -6,11 +6,11 @@ const StockMovement = require('../models/StockMovement');
 const CreditPayment = require('../models/CreditPayment');
 const SupplierPayment = require('../models/SupplierPayment');
 
-// Unified history feed of all major operations.
 exports.feed = async (req, res) => {
   try {
     const { startDate, endDate, types, limit = 100 } = req.query;
-    const dateFilter = {};
+    const tq = req.tenantId ? { tenant: req.tenantId } : {};
+    const dateFilter = { ...tq };
     if (startDate || endDate) {
       dateFilter.date = {};
       if (startDate) dateFilter.date.$gte = new Date(startDate);
@@ -73,6 +73,7 @@ exports.stockMovements = async (req, res) => {
   try {
     const { tank, startDate, endDate, limit = 200 } = req.query;
     const filter = {};
+    if (req.tenantId) filter.tenant = req.tenantId;
     if (tank) filter.tank = tank;
     if (startDate || endDate) {
       filter.date = {};

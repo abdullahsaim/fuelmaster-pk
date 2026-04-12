@@ -9,10 +9,17 @@ const FuelType = require('../models/FuelType');
 const Payroll = require('../models/Payroll');
 const CashClosing = require('../models/CashClosing');
 
+// Helper: build tenant filter for aggregations (ObjectId needed for $match)
+const mongoose = require('mongoose');
+const tFilter = (req) => req.tenantId ? { tenant: new mongoose.Types.ObjectId(req.tenantId) } : {};
+const tQuery = (req) => req.tenantId ? { tenant: req.tenantId } : {};
+
 // @desc    Get complete dashboard data
 // @route   GET /api/dashboard
 exports.getDashboard = async (req, res) => {
   try {
+    const tf = tFilter(req);
+    const tq = tQuery(req);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
@@ -23,48 +30,50 @@ exports.getDashboard = async (req, res) => {
 
     // Today's sales
     const todaySales = await Sale.aggregate([
-      { $match: { date: { $gte: today, $lt: tomorrow } } },
+      { $match: { ...tf, date: { $gte: today, $lt: tomorrow } } },
       { $group: { _id: null, totalAmount: { $sum: '$amount' }, totalQty: { $sum: '$quantity' }, count: { $sum: 1 } } },
     ]);
 
     // Yesterday's sales (for comparison)
     const yesterdaySales = await Sale.aggregate([
-      { $match: { date: { $gte: yesterday, $lt: today } } },
+      { $match: { ...tf, date: { $gte: yesterday, $lt: today } } },
       { $group: { _id: null, totalAmount: { $sum: '$amount' } } },
     ]);
 
     // Monthly sales
     const monthlySales = await Sale.aggregate([
-      { $match: { date: { $gte: monthStart } } },
+      { $match: { ...tf, date: { $gte: monthStart } } },
       { $group: { _id: null, totalAmount: { $sum: '$amount' }, totalQty: { $sum: '$quantity' } } },
     ]);
 
     // Monthly expenses
     const monthlyExpenses = await Expense.aggregate([
-      { $match: { date: { $gte: monthStart } } },
+      { $match: { ...tf, date: { $gte: monthStart } } },
       { $group: { _id: null, totalAmount: { $sum: '$amount' } } },
     ]);
 
     // Credit outstanding
     const creditOutstanding = await Customer.aggregate([
+      { $match: { ...tf } },
       { $group: { _id: null, totalBalance: { $sum: '$balance' }, count: { $sum: { $cond: [{ $gt: ['$balance', 0] }, 1, 0] } } } },
     ]);
 
     // Supplier payable
     const supplierPayable = await Supplier.aggregate([
+      { $match: { ...tf } },
       { $group: { _id: null, totalBalance: { $sum: '$balance' } } },
     ]);
 
     // Tank levels
-    const tanks = await Tank.find().populate('fuelType', 'name code color unit');
+    const tanks = await Tank.find(tq).populate('fuelType', 'name code color unit');
 
     // Fuel types with rates
-    const fuelTypes = await FuelType.find({ isActive: true });
+    const fuelTypes = await FuelType.find({ ...tq, isActive: true });
 
     // Employee count
-    const employeeCount = await Employee.countDocuments({ status: 'Active' });
+    const employeeCount = await Employee.countDocuments({ ...tq, status: 'Active' });
     const totalPayroll = await Employee.aggregate([
-      { $match: { status: 'Active' } },
+      { $match: { ...tf, status: 'Active' } },
       { $group: { _id: null, total: { $sum: '$salary' } } },
     ]);
 
@@ -76,7 +85,7 @@ exports.getDashboard = async (req, res) => {
       const dayEnd = new Date(dayStart);
       dayEnd.setDate(dayEnd.getDate() + 1);
       const daySales = await Sale.aggregate([
-        { $match: { date: { $gte: dayStart, $lt: dayEnd } } },
+        { $match: { ...tf, date: { $gte: dayStart, $lt: dayEnd } } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
       ]);
       last7Days.push({
@@ -86,7 +95,7 @@ exports.getDashboard = async (req, res) => {
     }
 
     // Recent expenses
-    const recentExpenses = await Expense.find().sort({ date: -1 }).limit(5);
+    const recentExpenses = await Expense.find(tq).sort({ date: -1 }).limit(5);
 
     // ── Alerts ──
     const alerts = [];
@@ -102,6 +111,7 @@ exports.getDashboard = async (req, res) => {
 
     // Over-limit credit customers
     const overLimitCustomers = await Customer.find({
+      ...tq,
       $expr: { $and: [{ $gt: ['$balance', 0] }, { $gt: ['$creditLimit', 0] }, { $gt: ['$balance', '$creditLimit'] }] }
     }).select('name balance creditLimit').limit(10);
     for (const c of overLimitCustomers) {
@@ -110,7 +120,7 @@ exports.getDashboard = async (req, res) => {
     }
 
     // High supplier payables
-    const highPayable = await Supplier.find({ balance: { $gt: 500000 } }).select('name balance').limit(5);
+    const highPayable = await Supplier.find({ ...tq, balance: { $gt: 500000 } }).select('name balance').limit(5);
     for (const s of highPayable) {
       alerts.push({ type: 'high_payable', severity: 'info',
         message: `${s.name} payable: PKR ${s.balance?.toLocaleString()}`, entity: s._id });
@@ -118,11 +128,11 @@ exports.getDashboard = async (req, res) => {
 
     // Today's cash position (quick calc)
     const todayCashSales = await Sale.aggregate([
-      { $match: { date: { $gte: today, $lt: tomorrow }, saleType: 'cash' } },
+      { $match: { ...tf, date: { $gte: today, $lt: tomorrow }, saleType: 'cash' } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
     const todayExpenses = await Expense.aggregate([
-      { $match: { date: { $gte: today, $lt: tomorrow } } },
+      { $match: { ...tf, date: { $gte: today, $lt: tomorrow } } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
     const todayTotal = todaySales[0]?.totalAmount || 0;
@@ -161,17 +171,19 @@ exports.getDashboard = async (req, res) => {
 // @route   GET /api/dashboard/performance
 exports.getPerformance = async (req, res) => {
   try {
+    const tf = tFilter(req);
+    const tq = tQuery(req);
     const { startDate, endDate } = req.query;
     const Reading = require('../models/Reading');
     const Attendance = require('../models/Attendance');
-    const Employee = require('../models/Employee');
 
     const dateFilter = {};
     if (startDate) dateFilter.$gte = new Date(startDate);
     if (endDate) dateFilter.$lte = new Date(endDate + 'T23:59:59');
-    const match = Object.keys(dateFilter).length ? { date: dateFilter } : {};
+    const match = { ...tf };
+    if (Object.keys(dateFilter).length) match.date = dateFilter;
 
-    const employees = await Employee.find({ status: 'Active' }).select('name role shift salary');
+    const employees = await Employee.find({ ...tq, status: 'Active' }).select('name role shift salary');
 
     // Readings per operator
     const readingsByOp = await Reading.aggregate([
@@ -186,7 +198,7 @@ exports.getPerformance = async (req, res) => {
       }},
     ]);
 
-    // Sales per nozzle operator (from readings, not direct sales)
+    // Sales by shift
     const salesByShift = await Sale.aggregate([
       { $match: match },
       { $group: {
@@ -238,15 +250,18 @@ exports.getPerformance = async (req, res) => {
 // @route   GET /api/dashboard/pnl
 exports.getPnL = async (req, res) => {
   try {
+    const tf = tFilter(req);
     const { startDate, endDate } = req.query;
-    const match = {};
-    if (startDate) match.$gte = new Date(startDate);
-    if (endDate) match.$lte = new Date(endDate + 'T23:59:59');
-    const dateFilter = Object.keys(match).length ? { date: match } : {};
+    const dateMatch = { ...tf };
+    if (startDate || endDate) {
+      dateMatch.date = {};
+      if (startDate) dateMatch.date.$gte = new Date(startDate);
+      if (endDate) dateMatch.date.$lte = new Date(endDate + 'T23:59:59');
+    }
 
-    const totalSales = await Sale.aggregate([{ $match: dateFilter }, { $group: { _id: null, total: { $sum: '$amount' } } }]);
-    const totalPurchases = await Purchase.aggregate([{ $match: dateFilter }, { $group: { _id: null, total: { $sum: '$amount' } } }]);
-    const totalExpenses = await Expense.aggregate([{ $match: dateFilter }, { $group: { _id: null, total: { $sum: '$amount' } } }]);
+    const totalSales = await Sale.aggregate([{ $match: dateMatch }, { $group: { _id: null, total: { $sum: '$amount' } } }]);
+    const totalPurchases = await Purchase.aggregate([{ $match: dateMatch }, { $group: { _id: null, total: { $sum: '$amount' } } }]);
+    const totalExpenses = await Expense.aggregate([{ $match: dateMatch }, { $group: { _id: null, total: { $sum: '$amount' } } }]);
 
     const revenue = totalSales[0]?.total || 0;
     const purchases = totalPurchases[0]?.total || 0;

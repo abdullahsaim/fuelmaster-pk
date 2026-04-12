@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const CashClosingSchema = new mongoose.Schema({
+  tenant: { type: mongoose.Schema.Types.ObjectId, ref: 'Tenant', index: true },
   date: { type: Date, required: true },
   shift: { type: String, enum: ['day', 'night', 'full'], default: 'full' },
 

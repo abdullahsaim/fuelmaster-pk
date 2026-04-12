@@ -3,13 +3,15 @@ const Sale = require('../models/Sale');
 const Expense = require('../models/Expense');
 const Reading = require('../models/Reading');
 const Tank = require('../models/Tank');
+const mongoose = require('mongoose');
 
-// @desc    Get shift handovers
-// @route   GET /api/shift-handovers
+const tFilter = (req) => req.tenantId ? { tenant: new mongoose.Types.ObjectId(req.tenantId) } : {};
+const tQuery = (req) => req.tenantId ? { tenant: req.tenantId } : {};
+
 exports.getHandovers = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    const filter = {};
+    const filter = { ...tQuery(req) };
     if (startDate || endDate) {
       filter.date = {};
       if (startDate) filter.date.$gte = new Date(startDate);
@@ -25,20 +27,19 @@ exports.getHandovers = async (req, res) => {
   }
 };
 
-// @desc    Auto-populate shift data for handover
-// @route   GET /api/shift-handovers/populate?date=YYYY-MM-DD&shift=day
 exports.populateShift = async (req, res) => {
   try {
     const { date, shift } = req.query;
     if (!date || !shift) return res.status(400).json({ success: false, message: 'Date and shift required' });
 
+    const tf = tFilter(req);
+    const tq = tQuery(req);
     const dayStart = new Date(date);
     dayStart.setHours(0, 0, 0, 0);
     const dayEnd = new Date(dayStart);
     dayEnd.setDate(dayEnd.getDate() + 1);
-    const dateMatch = { date: { $gte: dayStart, $lt: dayEnd }, shift };
+    const dateMatch = { ...tf, date: { $gte: dayStart, $lt: dayEnd }, shift };
 
-    // Sales summary
     const salesAgg = await Sale.aggregate([
       { $match: dateMatch },
       { $group: { _id: '$saleType', total: { $sum: '$amount' }, qty: { $sum: '$quantity' } } },
@@ -46,24 +47,21 @@ exports.populateShift = async (req, res) => {
     const cashSales = salesAgg.find(s => s._id === 'cash')?.total || 0;
     const creditSales = salesAgg.find(s => s._id === 'credit')?.total || 0;
 
-    // Expenses
     const expAgg = await Expense.aggregate([
-      { $match: { date: { $gte: dayStart, $lt: dayEnd } } },
+      { $match: { ...tf, date: { $gte: dayStart, $lt: dayEnd } } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]);
 
-    // Readings
-    const readings = await Reading.find(dateMatch).populate('nozzle', 'name');
+    const readingFilter = { ...tq, date: { $gte: dayStart, $lt: dayEnd }, shift };
+    const readings = await Reading.find(readingFilter).populate('nozzle', 'name');
     const meterReadings = readings.map(r => ({
       nozzle: r.nozzle?._id, nozzleName: r.nozzle?.name || '—',
       closing: r.closing, dispensed: r.dispensed,
     }));
 
-    // Tank levels
-    const tanks = await Tank.find().populate('fuelType', 'name');
+    const tanks = await Tank.find(tq).populate('fuelType', 'name');
     const tankLevels = tanks.map(t => ({ tank: t._id, tankName: `${t.name} (${t.fuelType?.name || ''})`, level: t.currentStock }));
 
-    // Short/excess from readings
     const shortExcess = readings.reduce((sum, r) => sum + (r.shortExcess || 0), 0);
 
     res.json({
@@ -83,22 +81,20 @@ exports.populateShift = async (req, res) => {
   }
 };
 
-// @desc    Create shift handover
-// @route   POST /api/shift-handovers
 exports.createHandover = async (req, res) => {
   try {
-    const data = await ShiftHandover.create({ ...req.body, createdBy: req.user._id });
+    const data = await ShiftHandover.create({ ...req.body, tenant: req.tenantId, createdBy: req.user._id });
     res.status(201).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// @desc    Acknowledge handover (incoming operator)
-// @route   PUT /api/shift-handovers/:id/acknowledge
 exports.acknowledgeHandover = async (req, res) => {
   try {
-    const data = await ShiftHandover.findByIdAndUpdate(req.params.id, {
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const data = await ShiftHandover.findOneAndUpdate(filter, {
       status: 'Acknowledged', acknowledgedAt: new Date(), incomingOperator: req.body.incomingOperator,
     }, { new: true }).populate('outgoingOperator incomingOperator', 'name role');
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
@@ -108,10 +104,11 @@ exports.acknowledgeHandover = async (req, res) => {
   }
 };
 
-// @route   DELETE /api/shift-handovers/:id
 exports.deleteHandover = async (req, res) => {
   try {
-    const data = await ShiftHandover.findByIdAndDelete(req.params.id);
+    const filter = { _id: req.params.id };
+    if (req.tenantId) filter.tenant = req.tenantId;
+    const data = await ShiftHandover.findOneAndDelete(filter);
     if (!data) return res.status(404).json({ success: false, message: 'Not found' });
     res.json({ success: true, message: 'Deleted' });
   } catch (error) {

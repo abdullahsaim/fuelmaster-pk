@@ -1,8 +1,6 @@
 const Tank = require('../models/Tank');
 const StockMovement = require('../models/StockMovement');
 
-// @desc    Transfer fuel between tanks
-// @route   POST /api/tank-transfer
 exports.transfer = async (req, res) => {
   try {
     const { fromTank, toTank, quantity, notes } = req.body;
@@ -15,8 +13,15 @@ exports.transfer = async (req, res) => {
     const qty = Number(quantity);
     if (qty <= 0) return res.status(400).json({ success: false, message: 'Quantity must be positive' });
 
-    const source = await Tank.findById(fromTank).populate('fuelType', 'name');
-    const dest = await Tank.findById(toTank).populate('fuelType', 'name');
+    const sourceFilter = { _id: fromTank };
+    const destFilter = { _id: toTank };
+    if (req.tenantId) {
+      sourceFilter.tenant = req.tenantId;
+      destFilter.tenant = req.tenantId;
+    }
+
+    const source = await Tank.findOne(sourceFilter).populate('fuelType', 'name');
+    const dest = await Tank.findOne(destFilter).populate('fuelType', 'name');
     if (!source || !dest) return res.status(404).json({ success: false, message: 'Tank not found' });
 
     if (source.currentStock < qty) {
@@ -26,22 +31,20 @@ exports.transfer = async (req, res) => {
       return res.status(400).json({ success: false, message: `Transfer would exceed ${dest.name} capacity. Space: ${dest.capacity - dest.currentStock} L` });
     }
 
-    // Deduct from source
     source.currentStock -= qty;
     await source.save();
-
-    // Add to destination
     dest.currentStock += qty;
     await dest.save();
 
-    // Log stock movements
     await StockMovement.create({
+      tenant: req.tenantId,
       date: new Date(), tank: fromTank, product: source.fuelType?._id,
       fuelType: source.fuelType?._id, type: 'OUT', quantity: qty,
       source: 'transfer', balanceAfter: source.currentStock,
       notes: `Transfer to ${dest.name}. ${notes || ''}`, createdBy: req.user._id,
     });
     await StockMovement.create({
+      tenant: req.tenantId,
       date: new Date(), tank: toTank, product: dest.fuelType?._id,
       fuelType: dest.fuelType?._id, type: 'IN', quantity: qty,
       source: 'transfer', balanceAfter: dest.currentStock,
